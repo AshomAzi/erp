@@ -11,6 +11,7 @@ from admin_dashboard.models import AuditLog, Notification, OrganizationSettings
 from employee.attendance_policy import attendance_deadlines
 from employee.models import Attendance, LeaveRequest
 from signup.models import User
+from supervisor.models import Task
 
 
 @dataclass(frozen=True)
@@ -123,7 +124,7 @@ def assign_mentor(request):
     if staff_member is None or mentor is None:
         messages.error(request, "Select an available employee or intern and a supervisor mentor.")
         return redirect("hr")
-    if staff_member.mentor_id == mentor.pk:
+    if staff_member.mentor == mentor:
         messages.info(request, "That supervisor is already assigned as this member's mentor.")
         return redirect("hr")
 
@@ -211,8 +212,8 @@ def export_reports(request):
                 leave.employee.email,
                 leave.employee.department,
                 leave.get_leave_type_display(),
-                leave.start_date,
-                leave.end_date,
+                leave.start_date.strftime("%Y-%m-%d") if leave.start_date else "",
+                leave.end_date.strftime("%Y-%m-%d") if leave.end_date else "",
                 leave.status,
             ])
     elif report_type == "intern_roster":
@@ -223,8 +224,34 @@ def export_reports(request):
                 staff.fullName,
                 staff.email,
                 staff.department,
-                staff.date_joined,
+                staff.date_joined.strftime("%Y-%m-%d") if staff.date_joined else "Not recorded",
                 staff.mentor.fullName if staff.mentor else "Not assigned",
+            ])
+    elif report_type == "task_summary":
+        writer.writerow(["Task Title", "Assignee", "Assigned By", "Priority", "Deadline", "Status", "Created At"])
+        for task in Task.objects.filter(
+            created_at__gte=month_start,
+            created_at__lt=month_end,
+        ).select_related("assigned_to", "assigned_by").order_by("-created_at"):
+            priority_display = dict(Task.PRIORITY_CHOICES).get(task.priority, task.priority)
+            writer.writerow([
+                task.title,
+                task.assigned_to.fullName,
+                task.assigned_by.fullName if task.assigned_by else "System",
+                priority_display,
+                task.deadline.strftime("%Y-%m-%d") if task.deadline else "",
+                task.status,
+                task.created_at.strftime("%Y-%m-%d %H:%M") if task.created_at else "",
+            ])
+    elif report_type == "user_roster":
+        writer.writerow(["Name", "Email", "Role", "Department", "Date Joined"])
+        for user in User.objects.order_by("fullName"):
+            writer.writerow([
+                user.fullName,
+                user.email,
+                user.role,
+                user.department,
+                user.date_joined.strftime("%Y-%m-%d") if user.date_joined else "Not recorded",
             ])
     else:
         organization_settings, _ = OrganizationSettings.objects.get_or_create(pk=1)
@@ -240,9 +267,9 @@ def export_reports(request):
                 record.employee.fullName,
                 record.employee.email,
                 record.employee.department,
-                record.date,
-                record.check_in.strftime("%H:%M") if record.check_in else "",
-                record.check_out.strftime("%H:%M") if record.check_out else "",
+                record.date.strftime("%Y-%m-%d") if record.date else "",
+                record.check_in.strftime("%Y-%m-%d %H:%M") if record.check_in else "",
+                record.check_out.strftime("%Y-%m-%d %H:%M") if record.check_out else "",
                 record.status,
             ])
     return response
