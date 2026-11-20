@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign Up | CoreERP</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}" />
+    <link rel="stylesheet" href="{% static 'css/signup.css' %}" />
+</head>
+
+<body class="page-signup">
+    <main class="auth-wrapper">
+        <section class="auth-intro" aria-label="CoreERP platform">
+            <header class="auth-intro-brand">
+                <span>CoreERP</span>
+            </header>
+            <div>
+                <p class="auth-eyebrow">Build a stronger workplace</p>
+                <h2 class="auth-intro-title">Your workday, working better.</h2>
+                <p class="auth-intro-copy">
+                    Join your team in one place to manage work, attendance, and time away.
+                </p>
+            </div>
+            <p class="auth-intro-note">A simpler way to stay connected at work</p>
+        </section>
+
+        <section class="auth-card">
+            <p class="auth-brand">CoreERP</p>
+            <h1 class="auth-title">Create your account</h1>
+            <p class="auth-subtitle">Set up your staff or intern profile to get started.</p>
+
+            <p class="alert-banner alert-danger {% if messages %}show{% endif %}" id="signupError" role="alert">
+                {% for message in messages %}
+                {{ message }}
+                {% endfor %}
+            </p>
+
+            <form id="signupForm" method="POST" action="{% url 'signup' %}">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="fullName">Full Name</label>
+                    <input type="text" id="fullName" name="fullName" placeholder="Jane Doe" required />
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" placeholder="jane.doe@company.com" required />
+                </div>
+
+                <div class="form-group">
+                    <label for="role">Role</label>
+                    <select id="role" name="role" required>
+                        <option value="">Select Role</option>
+                        <option value="Intern">Intern</option>
+                        <option value="Employee">Employee</option>
+                        <option value="Supervisor">Supervisor</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="department">Department</label>
+                    <select id="department" name="department" required>
+                        <option value="">Select Department</option>
+                        {% for department in departments %}
+                        <option value="{{ department.name }}">{{ department.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" minlength="8" required />
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password</label>
+                    <input type="password" id="confirmPassword" name="confirmPassword" minlength="8" required />
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">
+                    Register Account
+                </button>
+            </form>
+
+            <p class="auth-footer">
+                Already registered? <a href="/" class="auth-link">Sign in</a>
+            </p>
+        </section>
+    </main>
+    <script src="{% static 'js/common.js' %}"></script>
+    <script src="{% static 'js/signup.js' %}"></script>
+</body>
+
+</html>

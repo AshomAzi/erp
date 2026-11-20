@@ -1,0 +1,31 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>403 Access Denied | CoreERP</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}" />
+    <link rel="stylesheet" href="{% static 'css/403.css' %}" />
+</head>
+
+<body class="page-error">
+    <main class="error-wrapper">
+        <section class="error-card">
+            <p class="error-code" aria-label="Error 403">403</p>
+            <h1 class="error-title">Access Denied</h1>
+            <p class="error-message">
+                You do not have permission to view this page or perform this action. Your current role restricts access
+                to this module.
+            </p>
+            <nav class="error-actions" aria-label="Access denied actions">
+                <button type="button" class="btn btn-outline" id="goBackButton">Go Back</button>
+                <a href="/" class="btn btn-primary">Return to Login</a>
+            </nav>
+        </section>
+    </main>
+    <script src="{% static 'js/access-denied.js' %}"></script>
+</body>
+
+</html>

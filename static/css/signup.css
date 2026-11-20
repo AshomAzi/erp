@@ -1,0 +1,22 @@
+.page-signup .auth-wrapper {
+    background:
+        radial-gradient(circle at 85% 85%, var(--auth-halo), transparent 32%),
+        linear-gradient(135deg, var(--auth-bg-start), var(--auth-bg-end));
+}
+
+.page-signup .auth-card {
+    max-width: 480px;
+}
+
+.page-signup .form-group:last-of-type {
+    margin-bottom: 1.25rem;
+}
+
+.page-signup .auth-card form {
+    margin-top: 1.5rem;
+}
+
+.page-signup .auth-footer {
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-color);
+}

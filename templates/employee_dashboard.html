@@ -1,0 +1,374 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Staff Portal | CoreERP</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}" />
+    <link rel="stylesheet" href="{% static 'css/employee-dashboard.css' %}" />
+</head>
+
+<body class="page-employee">
+    <div class="app-shell">
+        <aside class="sidebar" id="sidebar">
+            <header class="sidebar-header">
+                <div>
+                    <p class="sidebar-logo">CoreERP</p>
+                    <span class="role-pill">{{ user_obj.role|default:"Employee" }}</span>
+                </div>
+                <button type="button" class="sidebar-close" id="sidebarClose"
+                    aria-label="Close navigation">&times;</button>
+            </header>
+            <nav class="sidebar-navigation" aria-label="Primary navigation">
+                <ul class="sidebar-nav">
+                    <li><button class="nav-link active" data-tab-target="emp-dashboard">My Dashboard</button></li>
+                    <li><button class="nav-link" data-tab-target="emp-tasks">My Tasks &amp; Submissions</button></li>
+                    <li><button class="nav-link" data-tab-target="emp-leave">Leave Requests</button></li>
+                </ul>
+            </nav>
+            <footer class="sidebar-footer">
+                <div class="sidebar-profile">
+                    <div class="profile-avatar" aria-hidden="true">
+                        <span data-profile-initials>CE</span>
+                        <img data-profile-image alt="" hidden />
+                    </div>
+                    <div class="profile-details">
+                        <strong>{{ user_obj.fullName|default:"User" }}</strong>
+                        <p class="sidebar-meta">{{ user_obj.department|default:"Department" }}</p>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-outline btn-sm profile-picture-button"
+                    data-profile-picture-trigger aria-controls="employeeProfilePicture">Upload profile picture</button>
+                <input type="file" id="employeeProfilePicture" hidden
+                    data-profile-picture-input                     data-profile-picture-key="employee-{{ user_obj.pk|default:'unknown' }}"
+                    accept="image/jpeg,image/png,image/webp,image/gif" />
+                <p class="profile-picture-feedback" data-profile-picture-feedback role="status"
+                    aria-live="polite"></p>
+                <a href="/" class="btn btn-outline btn-sm sidebar-logout">Logout</a>
+            </footer>
+        </aside>
+
+        <div class="main-area">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button type="button" class="menu-toggle" id="menuToggle" aria-label="Toggle navigation"
+                        aria-controls="sidebar" aria-expanded="false">&#9776;</button>
+                    <h1 class="topbar-title">Personal Workspace</h1>
+                </div>
+                <div class="topbar-right">
+                    <span class="live-clock" data-live-clock>--:--:--</span>
+                </div>
+            </header>
+
+            <main class="content-container">
+                {% if messages %}
+                {% for message in messages %}
+                <p class="alert-banner {% if message.tags == 'success' %}alert-success{% else %}alert-danger{% endif %} show"
+                    role="status">{{ message }}</p>
+                {% endfor %}
+                {% endif %}
+                <p class="alert-banner" id="attendanceFeedback" role="status"></p>
+
+                <section class="attendance-panel" data-attendance-settings
+                    data-server-now-ms="{{ server_now_ms }}"
+                    data-late-deadline-ms="{{ late_deadline_ms }}"
+                    data-check-out-deadline-ms="{{ check_out_deadline_ms }}"
+                    data-late-after-label="{{ late_after_time|time:'g:i A' }}"
+                    data-has-checked-in="{% if today_attendance and today_attendance.check_in %}true{% else %}false{% endif %}"
+                    data-has-checked-out="{% if today_attendance and today_attendance.check_out %}true{% else %}false{% endif %}">
+                    <div>
+                        <h2 class="attendance-heading">
+                            Daily Shift Attendance ({{ organization_settings.check_in_time|time:"g:i A" }}
+                            &ndash; {{ organization_settings.check_out_time|time:"g:i A" }})
+                        </h2>
+                        <p class="attendance-status">
+                            Status: <span class="badge {{ attendance_status_class }}"
+                                id="checkInStatusBadge">{{ attendance_status }}</span>
+                        </p>
+                        <p class="attendance-help">
+                            Check-ins after {{ late_after_time|time:"g:i A" }} are marked Late.
+                            Check-out becomes available at {{ organization_settings.check_out_time|time:"g:i A" }}.
+                        </p>
+                    </div>
+
+                    <form method="POST" action="{% url 'record_attendance' %}" class="attendance-actions"
+                        id="attendanceForm">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" id="attendanceActionInput" />
+                        <button type="button" class="btn btn-success" id="checkInBtn"
+                            {% if today_attendance and today_attendance.check_in %}disabled{% endif %}>
+                            Check In ({{ organization_settings.check_in_time|time:"g:i A" }})
+                        </button>
+                        <button type="button" class="btn btn-danger" id="checkOutBtn" disabled>
+                            Check Out ({{ organization_settings.check_out_time|time:"g:i A" }})
+                        </button>
+                    </form>
+                </section>
+
+                <section class="tab-section active" id="emp-dashboard" aria-label="Personal overview">
+                    <section class="stats-grid" aria-label="Personal metrics">
+                        <article class="stat-card">
+                            <h3 class="stat-label">Assigned Tasks</h3>
+                            <p class="stat-value">{{ task_count }}</p>
+                            <p class="stat-meta">{{ in_progress_count }} In Progress, {{ pending_count }} Pending</p>
+                        </article>
+                        <article class="stat-card">
+                            <h3 class="stat-label">Attendance Rate</h3>
+                            <p class="stat-value">{{ attendance_rate }}%</p>
+                            <p class="stat-meta">Across recorded attendance</p>
+                        </article>
+                        <article class="stat-card">
+                            <h3 class="stat-label">Leave Balance</h3>
+                            <p class="stat-value">{{ leave_balance }} Days</p>
+                            <p class="stat-meta">Annual &amp; Sick combined</p>
+                        </article>
+                    </section>
+
+                    <section class="card" aria-label="Recent attendance history">
+                        <header class="card-header">
+                            <h3>Recent Attendance History</h3>
+                        </header>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Check-In Time</th>
+                                        <th>Check-Out Time</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for attendance in attendance_records %}
+                                    <tr>
+                                        <td>{{ attendance.date|date:"Y-m-d" }}</td>
+                                        <td>{{ attendance.check_in|date:"h:i A"|default:"--:--" }}</td>
+                                        <td>{{ attendance.check_out|date:"h:i A"|default:"--:--" }}</td>
+                                        <td>
+                                            <span class="badge {% if attendance.status == 'Late' %}badge-warning{% else %}badge-success{% endif %}">
+                                                {{ attendance.status }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="4">No attendance records yet.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </section>
+
+                <section class="tab-section" id="emp-tasks" aria-label="My tasks and submissions">
+                    <div class="section-header">
+                        <h2>My Assigned Tasks</h2>
+                    </div>
+                    <section class="card" aria-label="Assigned tasks">
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Task</th>
+                                        <th>Assigned By</th>
+                                        <th>Deadline</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for task in tasks %}
+                                    {% with submission=task.employee_submissions.0 %}
+                                    <tr data-task-row
+                                        data-task-id="{{ task.pk }}"
+                                        data-task-title="{{ task.title }}"
+                                        data-task-assigned-by="{{ task.assigned_by.fullName|default:'Supervisor' }}"
+                                        data-task-deadline="{{ task.deadline|date:'Y-m-d' }}"
+                                        data-task-status="{{ task.status }}"
+                                        data-task-description="{{ task.description }}"
+                                        data-task-submission-status="{{ submission.status|default:'' }}"
+                                        data-task-submission-notes="{{ submission.notes|default:'' }}"
+                                        data-task-submission-reference="{{ submission.reference_link|default:'' }}"
+                                        data-task-attachment-url=""
+                                        data-task-attachment-name=""
+                                        data-task-attachment-type="">
+                                        <td>{{ task.title }}</td>
+                                        <td>{{ task.assigned_by.fullName|default:"Supervisor" }}</td>
+                                        <td>{{ task.deadline|date:"Y-m-d" }}</td>
+                                        <td><span class="badge badge-info">{{ task.status }}</span></td>
+                                        <td>
+                                            <button type="button" class="btn btn-outline btn-sm"
+                                                data-task-details-open aria-haspopup="dialog"
+                                                aria-controls="taskDetailsModal">View Details</button>
+                                            {% if not submission %}
+                                            <button class="btn btn-primary btn-sm"
+                                                data-submit-task-trigger
+                                                data-task-id="{{ task.pk }}"
+                                                data-modal-open="submitWorkModal">Submit Work</button>
+                                            {% elif submission.status == "RevisionRequested" %}
+                                            <button class="btn btn-primary btn-sm"
+                                                data-submit-task-trigger
+                                                data-task-id="{{ task.pk }}"
+                                                data-modal-open="submitWorkModal">Edit &amp; Resubmit</button>
+                                            {% else %}
+                                            <span class="badge badge-info">{{ submission.get_status_display }}</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endwith %}
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="5">You have no assigned tasks.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </section>
+
+                <section class="tab-section" id="emp-leave" aria-label="Leave requests">
+                    <div class="section-header">
+                        <h2>My Leave Applications</h2>
+                        <button class="btn btn-primary" data-modal-open="requestLeaveModal">+ Request Leave</button>
+                    </div>
+                    <section class="card" aria-label="Leave applications">
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Leave Type</th>
+                                        <th>Start Date</th>
+                                        <th>End Date</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for leave_request in leave_requests %}
+                                    <tr>
+                                        <td>{{ leave_request.get_leave_type_display }}</td>
+                                        <td>{{ leave_request.start_date|date:"Y-m-d" }}</td>
+                                        <td>{{ leave_request.end_date|date:"Y-m-d" }}</td>
+                                        <td>
+                                            <span class="badge {% if leave_request.status == 'Pending' %}badge-warning{% elif leave_request.status == 'Approved' %}badge-success{% else %}badge-danger{% endif %}">
+                                                {{ leave_request.status }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="4">No leave requests yet.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <dialog class="modal-backdrop" id="submitWorkModal" aria-labelledby="submitWorkTitle">
+        <section class="modal-box">
+            <header class="modal-header">
+                <h2 id="submitWorkTitle">Submit Completed Work</h2>
+                <button type="button" class="modal-close" data-modal-close>&times;</button>
+            </header>
+            <div class="modal-body">
+                <form method="POST" action="" id="submitTaskForm">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="workNotes">Work Summary / Notes</label>
+                        <textarea id="workNotes" name="notes" rows="4" placeholder="Describe what was completed..."
+                            required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="workReference">Attachment or Repository Link (Optional)</label>
+                        <input type="text" id="workReference" name="reference_link" placeholder="https://..." />
+                    </div>
+                    <button type="submit" id="submitTaskButton" class="btn btn-primary btn-block">Submit for Supervisor
+                        Review</button>
+                </form>
+            </div>
+        </section>
+        </dialog>
+
+        <dialog class="modal-backdrop" id="taskDetailsModal" aria-labelledby="taskDetailsTitle">
+            <section class="modal-box">
+                <header class="modal-header">
+                    <h2 id="taskDetailsTitle"></h2>
+                    <button type="button" class="modal-close" data-modal-close aria-label="Close task details">&times;</button>
+                </header>
+                <div class="modal-body">
+                    <dl class="task-detail-list">
+                        <div>
+                            <dt>Assigned By</dt>
+                            <dd id="taskDetailsAssigner"></dd>
+                        </div>
+                        <div>
+                            <dt>Deadline</dt>
+                            <dd id="taskDetailsDeadline"></dd>
+                        </div>
+                        <div>
+                            <dt>Status</dt>
+                            <dd id="taskDetailsStatus"></dd>
+                        </div>
+                    </dl>
+                    <section class="task-description" aria-labelledby="taskDescriptionHeading">
+                        <h3 id="taskDescriptionHeading">Instructions</h3>
+                        <p id="taskDetailsDescription"></p>
+                    </section>
+                    <section class="task-attachment" aria-label="Task PDF attachment">
+                        <p id="taskPdfMessage" role="status">No PDF is attached to this task.</p>
+                        <a id="taskPdfDownload" class="btn btn-outline" hidden>Download PDF</a>
+                    </section>
+                </div>
+            </section>
+        </dialog>
+
+    <dialog class="modal-backdrop" id="requestLeaveModal" aria-labelledby="requestLeaveTitle">
+        <section class="modal-box">
+            <header class="modal-header">
+                <h2 id="requestLeaveTitle">Submit Leave Request</h2>
+                <button type="button" class="modal-close" data-modal-close>&times;</button>
+            </header>
+            <div class="modal-body">
+                <form method="POST" action="{% url 'request_leave' %}">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="leaveType">Leave Type</label>
+                        <select id="leaveType" name="leave_type" required>
+                            <option value="annual">Annual Leave</option>
+                            <option value="sick">Sick Leave</option>
+                            <option value="casual">Casual / Personal Leave</option>
+                        </select>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="leaveStartDate">Start Date</label>
+                            <input type="date" id="leaveStartDate" name="start_date" required />
+                        </div>
+                        <div class="form-group">
+                            <label for="leaveEndDate">End Date</label>
+                            <input type="date" id="leaveEndDate" name="end_date" required />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="leaveReason">Reason</label>
+                        <textarea id="leaveReason" name="reason" rows="3" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Submit Request</button>
+                </form>
+            </div>
+        </section>
+    </dialog>
+
+    <script src="{% static 'js/common.js' %}"></script>
+    <script src="{% static 'js/employee-dashboard.js' %}"></script>
+</body>
+
+</html>

@@ -1,0 +1,25 @@
+.page-error .error-wrapper {
+    background:
+        radial-gradient(circle at 15% 15%, var(--auth-halo), transparent 30%),
+        linear-gradient(135deg, var(--auth-bg-start), var(--auth-bg-end));
+}
+
+.page-error .error-card {
+    width: 100%;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+}
+
+.page-error .error-actions .btn {
+    min-width: 120px;
+}
+
+@media (max-width: 420px) {
+    .page-error .error-actions {
+        flex-direction: column-reverse;
+    }
+
+    .page-error .error-actions .btn {
+        width: 100%;
+    }
+}

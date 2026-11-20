@@ -1,0 +1,13 @@
+.page-admin #admin-settings .card-body {
+    max-width: 980px;
+}
+
+.page-admin .table-search {
+    width: 100%;
+}
+
+@media (max-width: 560px) {
+    .page-admin .section-header .btn {
+        width: 100%;
+    }
+}

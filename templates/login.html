@@ -1,0 +1,73 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign In | CoreERP</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}" />
+    <link rel="stylesheet" href="{% static 'css/login.css' %}" />
+</head>
+
+<body class="page-login">
+    <main class="auth-wrapper">
+        <section class="auth-intro" aria-label="CoreERP platform">
+            <header class="auth-intro-brand">
+                <span>CoreERP</span>
+            </header>
+            <div>
+                <p class="auth-eyebrow">People first. Work made simpler.</p>
+                <h2 class="auth-intro-title">Great teams start with great tools.</h2>
+                <p class="auth-intro-copy">
+                    Manage your people, tasks, time, and growth in one connected workspace.
+                </p>
+            </div>
+            <p class="auth-intro-note">Secure access to your organization's workspace</p>
+        </section>
+
+        <section class="auth-card">
+            <p class="auth-brand">CoreERP</p>
+            <h1 class="auth-title">Welcome back</h1>
+            <p class="auth-subtitle">Sign in to access your organizational workspace.</p>
+
+            {% if messages %}
+            {% for message in messages %}
+            <p class="alert-banner alert-danger show" role="alert">{{ message }}</p>
+            {% endfor %}
+            {% endif %}
+
+            <form method="POST" action="{% url 'home' %}">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" placeholder="name@company.com" required />
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" placeholder="Enter your password" required />
+                </div>
+
+                <div class="form-group login-options">
+                    <label class="remember-option" for="remember">
+                        <input type="checkbox" id="remember" name="remember" /> Remember me
+                    </label>
+                    <a href="{% url 'forgot_password' %}" class="auth-link">Forgot password?</a>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block login-submit">
+                    Sign In
+                </button>
+            </form>
+
+            <p class="auth-footer">
+                Need an account?<a href="/signup/" class="auth-link">Create account</a>
+            </p>
+        </section>
+    </main>
+    <script src="{% static 'js/common.js' %}"></script>
+</body>
+
+</html>

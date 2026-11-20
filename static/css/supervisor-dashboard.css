@@ -1,0 +1,14 @@
+.page-supervisor #sup-submissions .table-responsive,
+.page-supervisor #sup-team .table-responsive {
+    min-height: 190px;
+}
+
+.page-supervisor .section-header {
+    align-items: flex-end;
+}
+
+@media (max-width: 560px) {
+    .page-supervisor .section-header .btn {
+        width: 100%;
+    }
+}

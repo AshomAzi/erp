@@ -1,0 +1,61 @@
+.page-hr .table-search {
+    width: 100%;
+}
+
+.page-hr .section-header {
+    align-items: flex-end;
+}
+
+.page-hr #hr-reports .card-body {
+    max-width: 980px;
+}
+
+.page-hr .staff-profile-modal-box {
+    max-width: 640px;
+}
+
+.page-hr .staff-profile-details {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+}
+
+.page-hr .staff-profile-details > div {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.8rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.page-hr .staff-profile-details > div:last-child {
+    border-bottom: 0;
+}
+
+.page-hr .staff-profile-details dt {
+    flex: 0 0 150px;
+    color: var(--text-main);
+    font-weight: 700;
+}
+
+.page-hr .staff-profile-details dd {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    color: var(--text-main);
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+    .page-hr .section-header .btn {
+        width: 100%;
+    }
+
+    .page-hr .staff-profile-details > div {
+        gap: 0.5rem;
+    }
+
+    .page-hr .staff-profile-details dt {
+        flex-basis: 125px;
+    }
+}

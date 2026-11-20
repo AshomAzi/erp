@@ -1,0 +1,405 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Console | CoreERP</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}" />
+    <link rel="stylesheet" href="{% static 'css/admin-dashboard.css' %}" />
+</head>
+
+<body class="page-admin">
+    <div class="app-shell">
+        <aside class="sidebar" id="sidebar">
+            <header class="sidebar-header">
+                <div>
+                    <p class="sidebar-logo">CoreERP</p>
+                    <span class="role-pill">{{ user_obj.role|default:"Admin" }}</span>
+                </div>
+                <button type="button" class="sidebar-close" id="sidebarClose"
+                    aria-label="Close navigation">&times;</button>
+            </header>
+            <nav class="sidebar-navigation" aria-label="Primary navigation">
+                <ul class="sidebar-nav">
+                    <li><button class="nav-link active" data-tab-target="admin-overview">System Overview</button></li>
+                    <li><button class="nav-link" data-tab-target="admin-users">Users &amp; Roles</button></li>
+                    <li><button class="nav-link" data-tab-target="admin-departments">Departments</button></li>
+                    <li><button class="nav-link" data-tab-target="admin-settings">System Settings</button></li>
+                </ul>
+            </nav>
+            <footer class="sidebar-footer">
+                <div class="sidebar-profile">
+                    <div class="profile-avatar" aria-hidden="true">
+                        <span data-profile-initials>AO</span>
+                        <img data-profile-image alt="" hidden />
+                    </div>
+                    <div class="profile-details">
+                        <strong>{{ user_obj.fullName|default:"User" }}</strong>
+                        <p class="sidebar-meta">{{ user_obj.email|default:"" }}</p>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-outline btn-sm profile-picture-button"
+                    data-profile-picture-trigger aria-controls="adminProfilePicture">Upload profile picture</button>
+                <input type="file" id="adminProfilePicture" hidden
+                    data-profile-picture-input                     data-profile-picture-key="admin-{{ user_obj.pk|default:'unknown' }}"
+                    accept="image/jpeg,image/png,image/webp,image/gif" />
+                <p class="profile-picture-feedback" data-profile-picture-feedback role="status"
+                    aria-live="polite"></p>
+                <a href="/" class="btn btn-outline btn-sm sidebar-logout">Logout</a>
+            </footer>
+        </aside>
+
+        <div class="main-area">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button type="button" class="menu-toggle" id="menuToggle" aria-label="Toggle navigation"
+                        aria-controls="sidebar" aria-expanded="false">&#9776;</button>
+                    <h1 class="topbar-title">Administration Control Panel</h1>
+                </div>
+                <div class="topbar-right">
+                    <span class="live-clock" data-live-clock>--:--:--</span>
+                </div>
+            </header>
+
+            <main class="content-container">
+                {% if messages %}
+                {% for message in messages %}
+                <p class="alert-banner {% if message.tags == 'success' %}alert-success{% else %}alert-danger{% endif %} show"
+                    role="status">{{ message }}</p>
+                {% endfor %}
+                {% endif %}
+
+                <section class="tab-section active" id="admin-overview" aria-label="System overview">
+                    <h2 class="visually-hidden">System Overview</h2>
+                    <section class="stats-grid" aria-label="System metrics">
+                        <article class="stat-card">
+                            <h3 class="stat-label">Total System Users</h3>
+                            <p class="stat-value">{{ total_user_count }}</p>
+                            <p class="stat-meta">{{ active_user_count }} Active Users</p>
+                        </article>
+                        <article class="stat-card">
+                            <h3 class="stat-label">Departments</h3>
+                            <p class="stat-value">{{ department_count }}</p>
+                            <p class="stat-meta">Across the platform</p>
+                        </article>
+                        <article class="stat-card">
+                            <h3 class="stat-label">Defined Roles</h3>
+                            <p class="stat-value">{{ role_count }}</p>
+                            <p class="stat-meta">{{ role_names|join:", " }}</p>
+                        </article>
+                        <article class="stat-card">
+                            <h3 class="stat-label">Shift Rules</h3>
+                            <p class="stat-value">{{ organization_settings.check_in_time|time:"H:i" }} - {{ organization_settings.check_out_time|time:"H:i" }}</p>
+                            <p class="stat-meta">Standard work hours</p>
+                        </article>
+                    </section>
+
+                    <section class="card" aria-label="Recent system audit logs">
+                        <header class="card-header">
+                            <h3>Recent System Audit Logs</h3>
+                        </header>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Timestamp</th>
+                                        <th>Actor</th>
+                                        <th>Action</th>
+                                        <th>Target</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for entry in audit_logs %}
+                                    <tr>
+                                        <td>{{ entry.occurred_at|date:"Y-m-d H:i" }}</td>
+                                        <td>{{ entry.actor.fullName|default:"System" }}</td>
+                                        <td>{{ entry.action }}</td>
+                                        <td>{{ entry.target }}</td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="4">No system activity has been recorded yet.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </section>
+
+                <section class="tab-section" id="admin-users" aria-label="Users and roles">
+                    <div class="section-header">
+                        <h2>User Accounts &amp; Role Assignment</h2>
+                        <button class="btn btn-primary" data-modal-open="createUserModal">+ Add System User</button>
+                    </div>
+
+                    <section class="card" aria-label="User accounts">
+                        <header class="card-header">
+                            <input type="search" placeholder="Search users by name, email, or role..."
+                                data-table-search="adminUsersTable" class="table-search" />
+                        </header>
+                        <div class="table-responsive">
+                            <table id="adminUsersTable">
+                                <thead>
+                                    <tr>
+                                        <th>Full Name</th>
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                        <th>Department</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for member in users %}
+                                    <tr>
+                                        <td>{{ member.fullName }}</td>
+                                        <td>{{ member.email }}</td>
+                                        <td><span class="badge badge-info">{{ member.role }}</span></td>
+                                        <td>{{ member.department }}</td>
+                                        <td><span class="badge badge-success">Active</span></td>
+                                        <td>
+                                            {% if member.role|lower != "admin" %}
+                                            <button type="button" class="btn btn-outline btn-sm"
+                                                data-modal-open="editRoleModal">Change Role</button>
+                                            {% else %}
+                                            <span>Protected administrator</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="6">No members have registered yet.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </section>
+
+                <section class="tab-section" id="admin-departments" aria-label="Organizational departments">
+                    <div class="section-header">
+                        <h2>Organizational Departments</h2>
+                        <button class="btn btn-primary" data-modal-open="createDeptModal">+ New Department</button>
+                    </div>
+                    <section class="card" aria-label="Department directory">
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Department Name</th>
+                                        <th>Department Head</th>
+                                        <th>Total Members</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for summary in department_summaries %}
+                                    <tr>
+                                        <td>{{ summary.department.name }}</td>
+                                        <td>{{ summary.department.head.fullName|default:"Not assigned" }}</td>
+                                        <td>{{ summary.member_count }}</td>
+                                        <td>
+                                            <button type="button" class="btn btn-outline btn-sm"
+                                                data-edit-department
+                                                data-department-id="{{ summary.department.pk }}"
+                                                data-department-name="{{ summary.department.name }}"
+                                                data-department-head="{{ summary.department.head_id|default:'' }}"
+                                                data-modal-open="editDeptModal">Edit</button>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="4">No departments have been created yet.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </section>
+
+                <section class="tab-section" id="admin-settings" aria-label="System settings">
+                    <section class="card" aria-label="Global attendance and organization settings">
+                        <header class="card-header">
+                            <h2>Global Attendance &amp; Organization Settings</h2>
+                        </header>
+                        <div class="card-body">
+                            <form method="POST" action="{% url 'save_organization_settings' %}">
+                                {% csrf_token %}
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label for="orgName">Organization Name</label>
+                                        <input type="text" id="orgName" name="org_name"
+                                            maxlength="100" value="{{ organization_settings.organization_name }}" required />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="checkinTime">Official Check-In Time</label>
+                                        <input type="time" id="checkinTime" name="checkin_time"
+                                            value="{{ organization_settings.check_in_time|time:'H:i' }}" required />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="checkoutTime">Official Check-Out Time</label>
+                                        <input type="time" id="checkoutTime" name="checkout_time"
+                                            value="{{ organization_settings.check_out_time|time:'H:i' }}" required />
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Save Settings</button>
+                            </form>
+                        </div>
+                    </section>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <dialog class="modal-backdrop" id="createUserModal" aria-labelledby="createUserTitle">
+        <section class="modal-box">
+            <header class="modal-header">
+                <h2 id="createUserTitle">Create New User</h2>
+                <button type="button" class="modal-close" data-modal-close>&times;</button>
+            </header>
+            <div class="modal-body">
+                <form method="POST" action="{% url 'create_user' %}">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="createUserName">Full Name</label>
+                        <input type="text" id="createUserName" name="full_name" required />
+                    </div>
+                    <div class="form-group">
+                        <label for="createUserEmail">Email</label>
+                        <input type="email" id="createUserEmail" name="email" required />
+                    </div>
+                    <div class="form-group">
+                        <label for="createUserRole">Assign Role</label>
+                        <select id="createUserRole" name="role" required>
+                            <option value="Admin">Admin</option>
+                            <option value="HR">HR</option>
+                            <option value="Supervisor">Supervisor</option>
+                            <option value="Employee">Employee</option>
+                            <option value="Intern">Intern</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="createUserDepartment">Department</label>
+                        <select id="createUserDepartment" name="department" required>
+                            {% for department in departments %}
+                            <option value="{{ department.name }}">{{ department.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="createUserPassword">Password</label>
+                        <input type="password" id="createUserPassword" name="password" minlength="8" required />
+                    </div>
+                    <div class="form-group">
+                        <label for="createUserConfirmPassword">Confirm Password</label>
+                        <input type="password" id="createUserConfirmPassword" name="confirmPassword" minlength="8"
+                            required />
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Create Account</button>
+                </form>
+            </div>
+        </section>
+        </dialog>
+
+    <dialog class="modal-backdrop" id="editRoleModal" aria-labelledby="editRoleTitle">
+        <section class="modal-box">
+            <header class="modal-header">
+                <h2 id="editRoleTitle">Update User Role &amp; Access</h2>
+                <button type="button" class="modal-close" data-modal-close>&times;</button>
+            </header>
+            <div class="modal-body">
+                <form method="POST" action="{% url 'update_user_role' %}">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="editUser">Select Member</label>
+                        <select id="editUser" name="user_id" required>
+                            {% for member in role_editable_users %}
+                            <option value="{{ member.pk }}">{{ member.fullName }} ({{ member.email }})</option>
+                            {% empty %}
+                            <option value="" disabled>No role-editable accounts available</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editUserRole">Select New Role</label>
+                        <select id="editUserRole" name="role" required>
+                            <option value="Admin">Admin</option>
+                            <option value="HR">HR</option>
+                            <option value="Supervisor">Supervisor</option>
+                            <option value="Employee">Employee</option>
+                            <option value="Intern">Intern</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Save Role</button>
+                </form>
+            </div>
+        </section>
+        </dialog>
+
+    <dialog class="modal-backdrop" id="createDeptModal" aria-labelledby="createDeptTitle">
+        <section class="modal-box">
+            <header class="modal-header">
+                <h2 id="createDeptTitle">Create Department</h2>
+                <button type="button" class="modal-close" data-modal-close>&times;</button>
+            </header>
+            <div class="modal-body">
+                <form method="POST" action="{% url 'create_department' %}">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="newDepartmentName">Department Name</label>
+                        <input type="text" id="newDepartmentName" name="name" required />
+                    </div>
+                    <div class="form-group">
+                        <label for="newDepartmentHead">Department Head</label>
+                        <select id="newDepartmentHead" name="head_id">
+                            <option value="">Not assigned</option>
+                            {% for member in department_heads %}
+                            <option value="{{ member.pk }}">{{ member.fullName }} ({{ member.role }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Save Department</button>
+                </form>
+            </div>
+        </section>
+        </dialog>
+
+    <dialog class="modal-backdrop" id="editDeptModal" aria-labelledby="editDeptTitle">
+        <section class="modal-box">
+            <header class="modal-header">
+                <h2 id="editDeptTitle">Edit Department</h2>
+                <button type="button" class="modal-close" data-modal-close>&times;</button>
+            </header>
+            <div class="modal-body">
+                <form id="editDepartmentForm" method="POST" action="{% url 'update_department' %}">
+                    {% csrf_token %}
+                    <input type="hidden" id="editDepartmentId" name="department_id" />
+                    <div class="form-group">
+                        <label for="editDepartmentName">Department Name</label>
+                        <input type="text" id="editDepartmentName" name="name" required />
+                    </div>
+                    <div class="form-group">
+                        <label for="editDepartmentHead">Department Head</label>
+                        <select id="editDepartmentHead" name="head_id">
+                            <option value="">Not assigned</option>
+                            {% for member in department_heads %}
+                            <option value="{{ member.pk }}">{{ member.fullName }} ({{ member.role }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Save Changes</button>
+                </form>
+            </div>
+        </section>
+        </dialog>
+
+    <script src="{% static 'js/common.js' %}"></script>
+    <script src="{% static 'js/admin-dashboard.js' %}"></script>
+</body>
+
+</html>

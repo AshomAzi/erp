@@ -1,0 +1,42 @@
+.page-login .auth-wrapper {
+    background:
+        radial-gradient(circle at 15% 15%, var(--auth-halo), transparent 34%),
+        linear-gradient(135deg, var(--auth-bg-start), var(--auth-bg-end));
+}
+
+.page-login .auth-card {
+    max-width: 460px;
+}
+
+.page-login .login-options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.85rem;
+}
+
+.page-login .remember-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    font-weight: 400;
+}
+
+.page-login .remember-option input {
+    width: auto;
+    margin: 0;
+}
+
+.page-login .login-submit {
+    margin-top: 0.5rem;
+}
+
+.page-login .auth-card form {
+    margin-top: 2rem;
+}
+
+.page-login .auth-footer {
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-color);
+}
