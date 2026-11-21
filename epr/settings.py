@@ -93,12 +93,11 @@ DATABASES = {
     'HOST': getenv('PGHOST'),
     'PORT': getenv('PGPORT', 5432),
     'CONN_MAX_AGE': 0,
-    'CONN_HEALTH_CHECKS':True,
+    'CONN_HEALTH_CHECKS': True,
     'OPTIONS': {
       'sslmode': 'require',
     },
     'DISABLE_SERVER_SIDE_CURSORS': True,
-    'CONN_HEALTH_CHECKS': True,
   }
 }
 
