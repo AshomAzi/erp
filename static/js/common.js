@@ -139,7 +139,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const image = footer && footer.querySelector("[data-profile-image]");
         const initials = footer && footer.querySelector("[data-profile-initials]");
         const feedback = footer && footer.querySelector("[data-profile-picture-feedback]");
-        const storageKey = input.dataset.profilePictureKey;
+        const uploadUrl = input.dataset.uploadUrl;
         const profileName = footer && footer.querySelector(".profile-details strong");
 
         if (initials && profileName) {
@@ -159,9 +159,9 @@ document.addEventListener("DOMContentLoaded", () => {
             !(image instanceof HTMLImageElement) ||
             !(initials instanceof HTMLElement) ||
             !(feedback instanceof HTMLElement) ||
-            !storageKey
+            !uploadUrl
         ) {
-            console.error("Profile picture controls are missing a required element or storage key.");
+            console.error("Profile picture controls are missing a required element or upload URL.");
             return;
         }
 
@@ -174,25 +174,23 @@ document.addEventListener("DOMContentLoaded", () => {
             initials.hidden = true;
             trigger.textContent = "Change profile picture";
         };
-        const storageName = `coreerp.profilePicture.${storageKey}`;
+        const showInitials = () => {
+            image.hidden = true;
+            initials.hidden = false;
+            trigger.textContent = "Upload profile picture";
+        };
+        const getCsrfToken = () => {
+            const field = document.querySelector("input[name='csrfmiddlewaretoken']");
+            if (field) return field.value;
+            const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+            return match ? decodeURIComponent(match[1]) : "";
+        };
 
-        try {
-            const savedPicture = window.localStorage.getItem(storageName);
-            if (savedPicture) {
-                if (/^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(savedPicture)) {
-                    showPicture(savedPicture);
-                } else {
-                    console.error("The saved profile picture has an unsupported format.");
-                    showFeedback("The saved picture could not be loaded. Please upload it again.");
-                }
-            }
-        } catch (error) {
-            console.error("Unable to load the saved profile picture.", error);
-            showFeedback("Your saved picture could not be loaded in this browser.");
-        }
+        // If the saved picture cannot be loaded, fall back to the initials.
+        image.addEventListener("error", showInitials);
 
         trigger.addEventListener("click", () => input.click());
-        input.addEventListener("change", () => {
+        input.addEventListener("change", async () => {
             const file = input.files && input.files[0];
             if (!file) return;
 
@@ -208,39 +206,35 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
-            const reader = new FileReader();
-            reader.addEventListener("error", () => {
-                console.error("Unable to read the selected profile picture.", reader.error);
-                showFeedback("The selected picture could not be read. Please try another file.");
-                input.value = "";
-            });
-            reader.addEventListener("load", () => {
-                if (typeof reader.result !== "string") {
-                    showFeedback("The selected picture could not be read. Please try another file.");
-                    input.value = "";
+            const formData = new FormData();
+            formData.append("profile_picture", file);
+
+            trigger.disabled = true;
+            showFeedback("Uploading picture...");
+            try {
+                const response = await fetch(uploadUrl, {
+                    method: "POST",
+                    body: formData,
+                    headers: {
+                        "X-CSRFToken": getCsrfToken(),
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    credentials: "same-origin",
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    showFeedback(result.error || "The picture could not be uploaded.");
                     return;
                 }
-
-                const candidate = new Image();
-                candidate.addEventListener("error", () => {
-                    showFeedback("The selected file is not a valid image.");
-                    input.value = "";
-                });
-                candidate.addEventListener("load", () => {
-                    try {
-                        window.localStorage.setItem(storageName, reader.result);
-                        showPicture(reader.result);
-                        showFeedback("Profile picture updated.");
-                    } catch (error) {
-                        console.error("Unable to save the profile picture in this browser.", error);
-                        showFeedback("The picture could not be saved. Try a smaller image or clear browser storage.");
-                    }
-                    input.value = "";
-                });
-                candidate.src = reader.result;
-            });
-            reader.readAsDataURL(file);
-            showFeedback("Uploading picture...");
+                showPicture(result.url);
+                showFeedback("Profile picture updated.");
+            } catch (error) {
+                console.error("Unable to upload the profile picture.", error);
+                showFeedback("The picture could not be uploaded. Check your connection and try again.");
+            } finally {
+                trigger.disabled = false;
+                input.value = "";
+            }
         });
     });
 

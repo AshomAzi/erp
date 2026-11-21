@@ -37,3 +37,24 @@ class User(models.Model):
 
     def __str__(self):
         return self.email
+
+
+class ProfilePicture(models.Model):
+    """
+    A user's profile picture, stored in the database (PostgreSQL bytea).
+
+    Kept in its own table, linked one-to-one with User, so the image bytes
+    are never loaded by the many queries that only need the User row.
+    """
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="profile_picture",
+    )
+    image = models.BinaryField()
+    content_type = models.CharField(max_length=30)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Profile picture for {self.user.email}"

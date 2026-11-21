@@ -3,9 +3,12 @@ from django.contrib import messages
 from django.contrib.auth.hashers import check_password
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from admin_dashboard.models import AuditLog, Notification
-from signup.models import User
-from django.views.decorators.http import require_POST
-from django.http import JsonResponse
+from signup.models import ProfilePicture, User
+from django.urls import reverse
+from django.views.decorators.http import require_GET, require_POST
+from django.http import Http404, HttpResponse, JsonResponse
+
+MAX_PROFILE_PICTURE_BYTES = 1024 * 1024  # 1 MB
 
 
 def _login_into_django_admin(request, user_obj, raw_password):
@@ -164,3 +167,94 @@ def mark_notifications_read(request):
     if referer:
         return redirect(referer)
     return redirect("home")
+
+
+def _sniff_image_type(data):
+    """Detect the real image type from the file's bytes, not the browser's claim."""
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+@require_POST
+def upload_profile_picture(request):
+    user_obj = User.objects.filter(pk=request.session.get("user_id")).first()
+    if user_obj is None:
+        return JsonResponse({"error": "Authentication required."}, status=403)
+
+    upload = request.FILES.get("profile_picture")
+    if upload is None:
+        return JsonResponse({"error": "No image was uploaded."}, status=400)
+    if upload.size > MAX_PROFILE_PICTURE_BYTES:
+        return JsonResponse({"error": "Choose an image smaller than 1 MB."}, status=400)
+
+    data = upload.read()
+    content_type = _sniff_image_type(data)
+    if content_type is None:
+        return JsonResponse(
+            {"error": "Choose a JPEG, PNG, WebP, or GIF image."},
+            status=400,
+        )
+
+    picture, _ = ProfilePicture.objects.update_or_create(
+        user=user_obj,
+        defaults={"image": data, "content_type": content_type},
+    )
+    AuditLog.objects.create(
+        actor=user_obj,
+        action="Updated profile picture",
+        target=user_obj.email,
+    )
+
+    url = reverse("profile_picture", args=[user_obj.pk])
+    return JsonResponse(
+        {"status": "ok", "url": f"{url}?v={int(picture.updated_at.timestamp())}"}
+    )
+
+
+@require_GET
+def profile_picture(request, user_id):
+    if not request.session.get("user_id"):
+        return HttpResponse(status=403)
+
+    row = (
+        ProfilePicture.objects.filter(user_id=user_id)
+        .values("image", "content_type")
+        .first()
+    )
+    if row is None:
+        raise Http404("No profile picture.")
+
+    # PostgreSQL returns bytea as a memoryview, so convert it to bytes.
+    response = HttpResponse(bytes(row["image"]), content_type=row["content_type"])
+    response["Cache-Control"] = "private, max-age=86400"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+def profile_picture_context(request):
+    """
+    Context processor (registered in settings.py): exposes `profile_picture_url`
+    to every template for the logged-in user. Only `updated_at` is read, never
+    the image bytes; the `?v=` value changes on each upload to bust the cache.
+    """
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return {}
+
+    updated_at = (
+        ProfilePicture.objects.filter(user_id=user_id)
+        .values_list("updated_at", flat=True)
+        .first()
+    )
+    if updated_at is None:
+        return {"profile_picture_url": ""}
+
+    url = reverse("profile_picture", args=[user_id])
+    return {"profile_picture_url": f"{url}?v={int(updated_at.timestamp())}"}

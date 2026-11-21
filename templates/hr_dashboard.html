@@ -33,8 +33,9 @@
             <footer class="sidebar-footer">
                 <div class="sidebar-profile">
                     <div class="profile-avatar" aria-hidden="true">
-                        <span data-profile-initials>GD</span>
-                        <img data-profile-image alt="" hidden />
+                        <span data-profile-initials {% if profile_picture_url %}hidden{% endif %}>GD</span>
+                        <img data-profile-image alt=""
+                            {% if profile_picture_url %}src="{{ profile_picture_url }}"{% else %}hidden{% endif %} />
                     </div>
                     <div class="profile-details">
                         <strong>{{ user_obj.fullName|default:"User" }}</strong>
@@ -42,9 +43,9 @@
                     </div>
                 </div>
                 <button type="button" class="btn btn-outline btn-sm profile-picture-button"
-                    data-profile-picture-trigger aria-controls="hrProfilePicture">Upload profile picture</button>
+                    data-profile-picture-trigger aria-controls="hrProfilePicture">{% if profile_picture_url %}Change{% else %}Upload{% endif %} profile picture</button>
                 <input type="file" id="hrProfilePicture" hidden data-profile-picture-input
-                    data-profile-picture-key="hr-{{ user_obj.pk|default:'unknown' }}"
+                    data-upload-url="{% url 'upload_profile_picture' %}"
                     accept="image/jpeg,image/png,image/webp,image/gif" />
                 <p class="profile-picture-feedback" data-profile-picture-feedback role="status" aria-live="polite"></p>
                 <form method="POST" action="{% url 'logout' %}" class="logout-form">
