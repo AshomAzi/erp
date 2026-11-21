@@ -1,340 +1,288 @@
-from dataclasses import dataclass
+from datetime import datetime
+
 from django.contrib import messages
 from django.contrib.auth.hashers import make_password
-from django.core.exceptions import ValidationError
-from django.core.validators import validate_email
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.shortcuts import redirect, render
-from datetime import datetime
+from django.utils import timezone
+from django.utils.crypto import get_random_string
 from django.views.decorators.http import require_POST
-from .models import AuditLog, Department, OrganizationSettings
+
+from employee.models import Attendance, LeaveRequest
 from signup.models import User
+from supervisor.models import Task
+
+from .models import AuditLog, Notification, OrganizationSettings
 
 
-@dataclass(frozen=True)
-class DepartmentSummary:
-    department: Department
-    member_count: int
-
-
-# Create your views here.
-
-def admin_dashboard(request):
-    user_obj = User.objects.filter(
+def _get_admin_user(request):
+    return User.objects.filter(
         pk=request.session.get("user_id"),
         role__iexact="Admin",
     ).first()
+
+
+def _notify_admins(message, link="/epr/admin_dashboard/"):
+    for admin in User.objects.filter(role__iexact="Admin"):
+        Notification.objects.create(
+            recipient=admin,
+            message=message,
+            link=link,
+        )
+
+
+def admin_dashboard(request):
+    user_obj = _get_admin_user(request)
     if user_obj is None:
         return redirect("access_denied")
 
-    users = User.objects.order_by("fullName", "email")
-    audit_logs = AuditLog.objects.select_related("actor")[:10]
-    departments = list(Department.objects.select_related("head"))
+    users = User.objects.all().order_by("fullName")
+    audit_logs = AuditLog.objects.select_related("actor").order_by("-occurred_at")[:30]
     organization_settings, _ = OrganizationSettings.objects.get_or_create(pk=1)
-    total_user_count = User.objects.count()
-    role_names = [label for _, label in User.ROLE_CHOICES]
-    member_counts = {}
-    for member_department in User.objects.values_list("department", flat=True):
-        key = member_department.casefold()
-        member_counts[key] = member_counts.get(key, 0) + 1
-    department_summaries = [
-        DepartmentSummary(
-            department=department,
-            member_count=member_counts.get(department.name.casefold(), 0),
-        )
-        for department in departments
-    ]
+
+    notification_queryset = Notification.objects.filter(recipient_id=user_obj.pk).order_by("-created_at")
+    notifications = notification_queryset[:10]
+    unread_notification_count = notification_queryset.filter(is_read=False).count()
+
+    today = timezone.localdate()
+
     return render(
         request,
         "admin_dashboard.html",
         {
             "user_obj": user_obj,
             "users": users,
-            "role_editable_users": users.exclude(role__iexact="Admin"),
+            "total_users": users.count(),
+            "admin_count": users.filter(role__iexact="Admin").count(),
+            "hr_count": users.filter(role__iexact="HR").count(),
+            "supervisor_count": users.filter(role__iexact="Supervisor").count(),
+            "employee_count": users.filter(role__iexact="Employee").count(),
+            "intern_count": users.filter(role__iexact="Intern").count(),
+            "pending_approvals_count": users.filter(is_approved=False).count(),
+            "active_tasks": Task.objects.exclude(status="Approved").count(),
+            "pending_leaves": LeaveRequest.objects.filter(status="Pending").count(),
+            "present_today": Attendance.objects.filter(date=today, check_in__isnull=False).count(),
             "audit_logs": audit_logs,
-            "departments": departments,
-            "department_summaries": department_summaries,
-            "department_heads": users,
             "organization_settings": organization_settings,
-            "total_user_count": total_user_count,
-            "active_user_count": total_user_count,
-            "department_count": len(departments),
-            "role_count": len(role_names),
-            "role_names": role_names,
+            "notifications": notifications,
+            "unread_notification_count": unread_notification_count,
         },
     )
 
 
 @require_POST
 def create_user(request):
-    admin_user = User.objects.filter(
-        pk=request.session.get("user_id"),
-        role__iexact="Admin",
-    ).first()
+    admin_user = _get_admin_user(request)
     if admin_user is None:
         return redirect("access_denied")
 
     full_name = request.POST.get("full_name", "").strip()
-    email = request.POST.get("email", "").strip()
-    role = request.POST.get("role", "").strip()
+    email = request.POST.get("email", "").strip().lower()
     department = request.POST.get("department", "").strip()
-    password = request.POST.get("password", "")
-    password_confirmation = request.POST.get("confirmPassword", "")
+    role = request.POST.get("role", "Employee").strip()
+    password = request.POST.get("password", "").strip()
 
-    if not all((full_name, email, role, department, password, password_confirmation)):
-        messages.error(request, "All fields are required.")
-        return redirect("admin_dashboard")
-
-    if len(full_name) > 100 or len(email) > 254:
-        messages.error(request, "The name or email address is too long.")
-        return redirect("admin_dashboard")
-
-    try:
-        validate_email(email)
-    except ValidationError:
-        messages.error(request, "Enter a valid email address.")
-        return redirect("admin_dashboard")
-
-    if role not in dict(User.ROLE_CHOICES):
-        messages.error(request, "Choose a valid role.")
-        return redirect("admin_dashboard")
-
-    department_obj = Department.objects.filter(name__iexact=department).first()
-    if department_obj is None:
-        messages.error(request, "Choose a valid department.")
-        return redirect("admin_dashboard")
-
-    if len(password) < 8:
-        messages.error(request, "Password must be at least 8 characters long.")
-        return redirect("admin_dashboard")
-
-    if password != password_confirmation:
-        messages.error(request, "Passwords do not match.")
+    valid_roles = {"Admin", "HR", "Supervisor", "Employee", "Intern"}
+    if not full_name or not email or role not in valid_roles:
+        messages.error(request, "Provide a valid full name, email, and role.")
         return redirect("admin_dashboard")
 
     if User.objects.filter(email__iexact=email).exists():
-        messages.error(request, "Email is already taken.")
+        messages.error(request, "A user with that email already exists.")
         return redirect("admin_dashboard")
 
-    try:
-        with transaction.atomic():
-            member = User.objects.create(
-                fullName=full_name,
-                email=email,
-                role=role,
-                department=department_obj.name,
-                password=make_password(password),
-            )
-            AuditLog.objects.create(
-                actor=admin_user,
-                action="Member account created",
-                target=f"{member.fullName} ({member.email}) - {member.role}",
-            )
-    except IntegrityError:
-        messages.error(request, "Email is already taken.")
+    raw_password = password if password else get_random_string(16)
+    with transaction.atomic():
+        new_user = User.objects.create(
+            fullName=full_name,
+            email=email,
+            department=department or "General",
+            role=role,
+            password=make_password(raw_password),
+            is_approved=True,
+        )
+        AuditLog.objects.create(
+            actor=admin_user,
+            action="User created",
+            target=f"{new_user.fullName} ({new_user.role})",
+        )
+        _notify_admins(
+            f"New user account created: {new_user.fullName} ({new_user.role}) by {admin_user.fullName}."
+        )
+
+    messages.success(request, f"Created user {new_user.fullName}.")
+    return redirect("admin_dashboard")
+
+
+@require_POST
+def approve_user(request, user_id):
+    admin_user = _get_admin_user(request)
+    if admin_user is None:
+        return redirect("access_denied")
+
+    target_user = User.objects.filter(pk=user_id).first()
+    if target_user is None:
+        messages.error(request, "User not found.")
         return redirect("admin_dashboard")
 
-    messages.success(request, "New member account created successfully.")
+    if target_user.is_approved:
+        messages.info(request, f"{target_user.fullName}'s account is already approved.")
+        return redirect("admin_dashboard")
+
+    with transaction.atomic():
+        target_user.is_approved = True
+        target_user.save(update_fields=["is_approved"])
+        AuditLog.objects.create(
+            actor=admin_user,
+            action="User approved",
+            target=f"{target_user.fullName} ({target_user.role})",
+        )
+        Notification.objects.create(
+            recipient=target_user,
+            message="Your CoreERP account has been approved by an administrator. You can now log in.",
+            link="/",
+        )
+        _notify_admins(
+            f"Approved new user account: {target_user.fullName} ({target_user.role}) by {admin_user.fullName}."
+        )
+
+    messages.success(request, f"Approved {target_user.fullName}'s account.")
     return redirect("admin_dashboard")
 
 
 @require_POST
 def update_user_role(request):
-    admin_user = User.objects.filter(
-        pk=request.session.get("user_id"),
-        role__iexact="Admin",
-    ).first()
+    admin_user = _get_admin_user(request)
     if admin_user is None:
         return redirect("access_denied")
 
     try:
         target_user_id = int(request.POST.get("user_id", ""))
     except (TypeError, ValueError):
-        target_user_id = None
-    role = request.POST.get("role", "").strip()
-    if target_user_id is None:
-        messages.error(request, "Choose a valid user.")
+        messages.error(request, "Select a valid user.")
         return redirect("admin_dashboard")
-    if role not in dict(User.ROLE_CHOICES):
+
+    new_role = request.POST.get("role", "").strip()
+    valid_roles = {"Admin", "HR", "Supervisor", "Employee", "Intern"}
+    if new_role not in valid_roles:
         messages.error(request, "Choose a valid role.")
         return redirect("admin_dashboard")
-    with transaction.atomic():
-        target_user = User.objects.select_for_update().filter(pk=target_user_id).first()
-        if target_user is None:
-            messages.error(request, "Choose a valid user.")
-            return redirect("admin_dashboard")
-        if target_user.role.casefold() == "admin":
-            messages.error(request, "Administrator roles cannot be changed.")
-            return redirect("admin_dashboard")
-        if target_user.role == role:
-            messages.info(request, "The selected member already has that role.")
-            return redirect("admin_dashboard")
 
-        previous_role = target_user.role
-        target_user.role = role
+    target_user = User.objects.filter(pk=target_user_id).first()
+    if target_user is None:
+        messages.error(request, "User not found.")
+        return redirect("admin_dashboard")
+
+    if target_user.pk == admin_user.pk and new_role != "Admin":
+        messages.error(request, "You cannot remove your own Admin privileges.")
+        return redirect("admin_dashboard")
+
+    if target_user.role == new_role:
+        messages.info(request, f"{target_user.fullName} already has the {new_role} role.")
+        return redirect("admin_dashboard")
+
+    old_role = target_user.role
+    with transaction.atomic():
+        target_user.role = new_role
         target_user.save(update_fields=["role"])
         AuditLog.objects.create(
             actor=admin_user,
-            action="Role changed",
-            target=f"{target_user.fullName} ({target_user.email}): {previous_role} -> {role}",
+            action="User role updated",
+            target=f"{target_user.fullName}: {old_role} -> {new_role}",
+        )
+        Notification.objects.create(
+            recipient=target_user,
+            message=f"Your system role was updated from {old_role} to {new_role} by {admin_user.fullName}.",
+            link="/",
+        )
+        _notify_admins(
+            f"Role change: {target_user.fullName} updated from {old_role} to {new_role} by {admin_user.fullName}."
         )
 
-    messages.success(request, "Member role updated.")
+    messages.success(request, f"Updated {target_user.fullName}'s role to {new_role}.")
     return redirect("admin_dashboard")
 
 
 @require_POST
 def create_department(request):
-    admin_user = User.objects.filter(
-        pk=request.session.get("user_id"),
-        role__iexact="Admin",
-    ).first()
+    admin_user = _get_admin_user(request)
     if admin_user is None:
         return redirect("access_denied")
 
-    name = request.POST.get("name", "").strip()
-    head_id = request.POST.get("head_id", "").strip()
-    if not name:
-        messages.error(request, "Department name is required.")
-        return redirect("admin_dashboard")
-    if len(name) > 50:
-        messages.error(request, "Department name must be 50 characters or fewer.")
-        return redirect("admin_dashboard")
-    if Department.objects.filter(name__iexact=name).exists():
-        messages.error(request, "A department with that name already exists.")
+    dept_name = request.POST.get("department_name", "").strip() or request.POST.get("name", "").strip()
+    if not dept_name:
+        messages.error(request, "Enter a department name.")
         return redirect("admin_dashboard")
 
-    head = None
-    if head_id:
-        try:
-            head_pk = int(head_id)
-        except ValueError:
-            messages.error(request, "Choose a valid department head.")
-            return redirect("admin_dashboard")
-        head = User.objects.filter(pk=head_pk).first()
-        if head is None:
-            messages.error(request, "Choose a valid department head.")
-            return redirect("admin_dashboard")
-
-    try:
-        with transaction.atomic():
-            department = Department.objects.create(name=name, head=head)
-            AuditLog.objects.create(
-                actor=admin_user,
-                action="Department created",
-                target=department.name,
-            )
-    except IntegrityError:
-        messages.error(request, "A department with that name already exists.")
-        return redirect("admin_dashboard")
-
-    messages.success(request, "Department created successfully.")
+    AuditLog.objects.create(
+        actor=admin_user,
+        action="Department created",
+        target=dept_name,
+    )
+    _notify_admins(f"Department '{dept_name}' was created by {admin_user.fullName}.")
+    messages.success(request, f"Department '{dept_name}' recorded.")
     return redirect("admin_dashboard")
 
 
 @require_POST
 def update_department(request):
-    admin_user = User.objects.filter(
-        pk=request.session.get("user_id"),
-        role__iexact="Admin",
-    ).first()
+    admin_user = _get_admin_user(request)
     if admin_user is None:
         return redirect("access_denied")
 
-    try:
-        department_id = int(request.POST.get("department_id", ""))
-    except (TypeError, ValueError):
-        department_id = None
-    department = Department.objects.filter(pk=department_id).first()
-    name = request.POST.get("name", "").strip()
-    head_id = request.POST.get("head_id", "").strip()
-    if department is None:
-        messages.error(request, "Choose a valid department.")
+    old_name = request.POST.get("old_department", "").strip()
+    new_name = request.POST.get("department_name", "").strip() or request.POST.get("name", "").strip()
+    if not new_name:
+        messages.error(request, "Enter a valid department name.")
         return redirect("admin_dashboard")
-    if not name or len(name) > 50:
-        messages.error(request, "Department name must be 1 to 50 characters.")
-        return redirect("admin_dashboard")
-    if Department.objects.filter(name__iexact=name).exclude(pk=department.pk).exists():
-        messages.error(request, "A department with that name already exists.")
-        return redirect("admin_dashboard")
-
-    head = None
-    if head_id:
-        try:
-            head = User.objects.filter(pk=int(head_id)).first()
-        except (TypeError, ValueError):
-            head = None
-        if head is None:
-            messages.error(request, "Choose a valid department head.")
-            return redirect("admin_dashboard")
 
     with transaction.atomic():
-        department.name = name
-        department.head = head
-        department.save(update_fields=["name", "head"])
+        if old_name and old_name != new_name:
+            User.objects.filter(department__iexact=old_name).update(department=new_name)
         AuditLog.objects.create(
             actor=admin_user,
             action="Department updated",
-            target=department.name,
+            target=f"{old_name or 'Department'} -> {new_name}",
         )
-    messages.success(request, "Department updated successfully.")
+        _notify_admins(f"Department updated to '{new_name}' by {admin_user.fullName}.")
+
+    messages.success(request, f"Department updated to '{new_name}'.")
     return redirect("admin_dashboard")
 
 
 @require_POST
 def save_organization_settings(request):
-    admin_user = User.objects.filter(
-        pk=request.session.get("user_id"),
-        role__iexact="Admin",
-    ).first()
+    admin_user = _get_admin_user(request)
     if admin_user is None:
         return redirect("access_denied")
 
-    organization_name = request.POST.get("org_name", "").strip()
-    check_in_value = request.POST.get("checkin_time", "").strip()
-    check_out_value = request.POST.get("checkout_time", "").strip()
-    if not organization_name:
-        messages.error(request, "Organization name is required.")
-        return redirect("admin_dashboard")
-    if len(organization_name) > 100:
-        messages.error(request, "Organization name must be 100 characters or fewer.")
-        return redirect("admin_dashboard")
+    check_in_raw = request.POST.get("check_in_time", "").strip()
+    check_out_raw = request.POST.get("check_out_time", "").strip()
 
     try:
-        check_in_time = datetime.strptime(check_in_value, "%H:%M").time()
-        check_out_time = datetime.strptime(check_out_value, "%H:%M").time()
+        check_in_time = datetime.strptime(check_in_raw, "%H:%M").time()
+        check_out_time = datetime.strptime(check_out_raw, "%H:%M").time()
     except ValueError:
-        messages.error(request, "Enter valid check-in and check-out times.")
+        messages.error(request, "Enter valid shift check-in and check-out times.")
         return redirect("admin_dashboard")
 
-    if check_out_time <= check_in_time:
+    if check_in_time >= check_out_time:
         messages.error(request, "Check-out time must be later than check-in time.")
         return redirect("admin_dashboard")
 
     with transaction.atomic():
-        settings_obj, _ = OrganizationSettings.objects.select_for_update().get_or_create(pk=1)
-        previous_values = (
-            settings_obj.organization_name,
-            settings_obj.check_in_time,
-            settings_obj.check_out_time,
-        )
-        new_values = (organization_name, check_in_time, check_out_time)
-        if previous_values == new_values:
-            messages.info(request, "Organization settings are unchanged.")
-            return redirect("admin_dashboard")
-
-        settings_obj.organization_name = organization_name
+        settings_obj, _ = OrganizationSettings.objects.get_or_create(pk=1)
         settings_obj.check_in_time = check_in_time
         settings_obj.check_out_time = check_out_time
-        settings_obj.updated_by = admin_user
         settings_obj.save()
+
         AuditLog.objects.create(
             actor=admin_user,
             action="Organization settings updated",
-            target=(
-                f"{organization_name}; check-in {check_in_time.strftime('%H:%M')}; "
-                f"check-out {check_out_time.strftime('%H:%M')}"
-            ),
+            target=f"Shift {check_in_time.strftime('%H:%M')} - {check_out_time.strftime('%H:%M')}",
+        )
+        _notify_admins(
+            f"Organization shift schedule updated ({check_in_time.strftime('%I:%M %p')} - {check_out_time.strftime('%I:%M %p')}) by {admin_user.fullName}."
         )
 
     messages.success(request, "Organization settings saved.")

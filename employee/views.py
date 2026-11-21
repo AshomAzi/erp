@@ -16,10 +16,16 @@ from .models import Attendance, LeaveRequest
 
 def employee(request):
     user_id = request.session.get("user_id")
-    user_obj = User.objects.filter(pk=user_id).first() if user_id else None
+    user_obj = User.objects.filter(
+        pk=user_id,
+        role__in=["Employee", "Intern"],
+    ).first() if user_id else None
+    if user_obj is None:
+        return redirect("access_denied")
+
     today = timezone.localdate()
     tasks = Task.objects.none()
-    assigned_supervisor = user_obj.mentor if user_obj is not None else None
+    assigned_supervisor = user_obj.mentor
     if assigned_supervisor is not None:
         tasks = Task.objects.filter(
             assigned_to=user_obj,
@@ -27,29 +33,30 @@ def employee(request):
         ).select_related("assigned_by").prefetch_related(
             Prefetch(
                 "submissions",
-                queryset=TaskSubmission.objects.filter(employee_id=user_id),
+                queryset=TaskSubmission.objects.filter(employee_id=user_obj.pk),
                 to_attr="employee_submissions",
             )
         )
     task_count = tasks.count()
     in_progress_count = tasks.filter(status__iexact="In Progress").count()
     pending_count = tasks.filter(status__iexact="Pending").count()
-    attendance_records = Attendance.objects.filter(employee_id=user_id, date__lte=today).order_by("-date")
+    attendance_records = Attendance.objects.filter(employee_id=user_obj.pk, date__lte=today).order_by("-date")
     attendance_count = attendance_records.count()
     present_count = attendance_records.filter(check_in__isnull=False).count()
     attendance_rate = round((present_count / attendance_count) * 100) if attendance_count else 0
     approved_leave_days = sum(
         (leave.end_date - leave.start_date).days + 1
-        for leave in LeaveRequest.objects.filter(employee_id=user_id, status="Approved")
+        for leave in LeaveRequest.objects.filter(employee_id=user_obj.pk, status="Approved")
     )
     leave_balance = max(12 - approved_leave_days, 0)
-    notification_queryset = Notification.objects.filter(recipient_id=user_id)
+
+    notification_queryset = Notification.objects.filter(recipient_id=user_obj.pk).order_by("-created_at")
     notifications = notification_queryset[:10]
     unread_notification_count = notification_queryset.filter(is_read=False).count()
+
     organization_settings, _ = OrganizationSettings.objects.get_or_create(pk=1)
-    today = timezone.localdate()
     server_now = timezone.localtime()
-    today_attendance = Attendance.objects.filter(employee_id=user_id, date=today).first()
+    today_attendance = Attendance.objects.filter(employee_id=user_obj.pk, date=today).first()
     late_deadline, _ = attendance_deadlines(organization_settings.check_in_time, today)
     check_out_deadline = local_datetime(today, organization_settings.check_out_time)
     attendance_status = "Not Checked In"
@@ -81,10 +88,10 @@ def employee(request):
             "organization_settings": organization_settings,
             "today_attendance": today_attendance,
             "attendance_records": Attendance.objects.filter(
-                employee_id=user_id,
+                employee_id=user_obj.pk,
                 date__lte=today,
             )[:5],
-            "leave_requests": LeaveRequest.objects.filter(employee_id=user_id)[:10],
+            "leave_requests": LeaveRequest.objects.filter(employee_id=user_obj.pk)[:10],
             "attendance_status": attendance_status,
             "attendance_status_class": attendance_status_class,
             "late_after_time": late_deadline.time(),
@@ -200,6 +207,12 @@ def request_leave(request):
             action="Leave requested",
             target=f"{employee_user.fullName}: {leave_request.get_leave_type_display()}",
         )
+        for hr in User.objects.filter(role__iexact="HR"):
+            Notification.objects.create(
+                recipient=hr,
+                message=f"{employee_user.fullName} requested {leave_request.get_leave_type_display()}.",
+                link="/epr/hr/",
+            )
 
     messages.success(request, "Leave request submitted for HR review.")
     return redirect("employee")
@@ -271,7 +284,7 @@ def submit_task(request, task_id):
         if task.assigned_by is not None:
             Notification.objects.create(
                 recipient=task.assigned_by,
-                message=f"{employee_user.fullName} submitted '{task.title}'.",
+                message=f"{employee_user.fullName} submitted work for '{task.title}'.",
                 link="/epr/supervisor/",
             )
 

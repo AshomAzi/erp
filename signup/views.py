@@ -1,11 +1,14 @@
-from django.shortcuts import render, redirect
 from django.contrib import messages
-from django.db import IntegrityError, transaction
-from .models import User
 from django.contrib.auth.hashers import make_password
-from admin_dashboard.models import AuditLog, Department
+from django.db import IntegrityError, transaction
+from django.shortcuts import redirect, render
+
+from admin_dashboard.models import AuditLog, Department, Notification
+
+from .models import User
 
 # Create your views here.
+
 
 def signup(request):
     departments = Department.objects.order_by("name")
@@ -24,7 +27,7 @@ def signup(request):
 
         department_obj = Department.objects.filter(name__iexact=department).first()
         if department_obj is None:
-            messages.error(request, "Choose a valid department")    
+            messages.error(request, "Choose a valid department.")
             return render(request, "signup.html", {"departments": departments})
 
         if len(password) < 8:
@@ -36,9 +39,8 @@ def signup(request):
             return render(request, "signup.html", {"departments": departments})
 
         roles = ["Intern", "Employee", "Supervisor"]
-        
         if role not in roles:
-            messages.error(request, "Choose a valid  selected.")
+            messages.error(request, "Choose a valid role.")
             return render(request, "signup.html", {"departments": departments})
 
         if User.objects.filter(email__iexact=email).exists():
@@ -53,14 +55,27 @@ def signup(request):
                     role=role,
                     department=department_obj.name,
                     password=make_password(password),
+                    is_approved=False,
                 )
                 AuditLog.objects.create(
                     actor=user,
                     action="Member signed up",
                     target=f"{user.fullName} ({user.email}) - {user.role}",
                 )
+                for admin in User.objects.filter(role__iexact="Admin"):
+                    Notification.objects.create(
+                        recipient=admin,
+                        message=f"Pending approval: {user.fullName} ({user.role}) registered.",
+                        link="/epr/admin_dashboard/",
+                    )
         except IntegrityError:
             messages.error(request, "Email is already taken.")
             return render(request, "signup.html", {"departments": departments})
+
+        messages.info(
+            request,
+            "Registration submitted. Your account is pending administrator approval before you can log in.",
+        )
         return redirect("/")
+
     return render(request, "signup.html", {"departments": departments})

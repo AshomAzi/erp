@@ -1,15 +1,17 @@
 from django.contrib import messages
 from django.db import transaction
 from django.shortcuts import redirect, render
-from django.utils.dateparse import parse_date
 from django.utils import timezone
-from django.db.models import Count, Q
+from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
+
 from admin_dashboard.models import AuditLog, Notification
+from employee.models import Attendance
 from signup.models import User
+
 from .models import Task, TaskSubmission
 
-# Create your views here.
+
 def supervisor(request):
     user_obj = User.objects.filter(
         pk=request.session.get("user_id"),
@@ -30,12 +32,11 @@ def supervisor(request):
         task__assigned_by=user_obj,
         task__assigned_to__mentor=user_obj,
     ).select_related("task", "employee")
-    team_members = members
     today = timezone.localdate()
     team_stats = []
-    for member in team_members:
-        attendance = member.attendance_records.filter(date=today).first()
-        member_tasks = member.assigned_tasks.filter(assigned_by=user_obj)
+    for member in members:
+        attendance = Attendance.objects.filter(employee=member, date=today).first()
+        member_tasks = Task.objects.filter(assigned_to=member, assigned_by=user_obj)
         open_tasks = member_tasks.exclude(status="Approved").count()
         completed = member_tasks.filter(status="Approved").count()
         total = member_tasks.count()
@@ -45,6 +46,11 @@ def supervisor(request):
             "open_tasks": open_tasks,
             "completion_rate": round((completed / total) * 100) if total else 0,
         })
+
+    notification_queryset = Notification.objects.filter(recipient_id=user_obj.pk).order_by("-created_at")
+    notifications = notification_queryset[:10]
+    unread_notification_count = notification_queryset.filter(is_read=False).count()
+
     return render(
         request,
         "supervisor_dashboard.html",
@@ -55,8 +61,10 @@ def supervisor(request):
             "submissions": submissions,
             "pending_submissions": submissions.filter(status="Submitted").count(),
             "team_stats": team_stats,
-            "team_count": team_stats.__len__(),
+            "team_count": len(team_stats),
             "active_task_count": tasks.exclude(status="Approved").count(),
+            "notifications": notifications,
+            "unread_notification_count": unread_notification_count,
         },
     )
 
@@ -107,7 +115,7 @@ def create_task(request):
         )
         Notification.objects.create(
             recipient=assignee,
-            message=f"New task assigned: {task.title}",
+            message=f"New task assigned by {supervisor_user.fullName}: {task.title}",
             link="/epr/employee/",
         )
 

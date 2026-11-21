@@ -26,6 +26,7 @@ class User(models.Model):
     department = models.CharField(max_length=50, choices=DEPARTMENT_CHOICES)
     password = models.CharField(max_length=128)
     date_joined = models.DateField(auto_now_add=True, null=True, blank=True)
+    is_approved = models.BooleanField(default=False)
     mentor = models.ForeignKey(
         "self",
         null=True,

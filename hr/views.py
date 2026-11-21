@@ -1,12 +1,14 @@
 from dataclasses import dataclass
-from django.db import transaction
-from django.contrib import messages
-from django.shortcuts import get_object_or_404, redirect, render
-from django.http import HttpResponse
 from datetime import date
 import csv
-from django.views.decorators.http import require_POST
+
+from django.contrib import messages
+from django.db import transaction
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.http import require_POST
+
 from admin_dashboard.models import AuditLog, Notification, OrganizationSettings
 from employee.attendance_policy import attendance_deadlines
 from employee.models import Attendance, LeaveRequest
@@ -21,7 +23,6 @@ class StaffDirectoryEntry:
     employment_type: str
 
 
-# Create your views here.
 def hr(request):
     user_id = request.session.get("user_id")
     user_obj = User.objects.filter(pk=user_id, role__iexact="HR").first()
@@ -73,6 +74,10 @@ def hr(request):
             )
         )
 
+    notification_queryset = Notification.objects.filter(recipient_id=user_obj.pk).order_by("-created_at")
+    notifications = notification_queryset[:10]
+    unread_notification_count = notification_queryset.filter(is_read=False).count()
+
     return render(
         request,
         "hr_dashboard.html",
@@ -96,6 +101,8 @@ def hr(request):
             .order_by("check_in"),
             "leave_requests": LeaveRequest.objects.select_related("employee")
             .order_by("-requested_at")[:20],
+            "notifications": notifications,
+            "unread_notification_count": unread_notification_count,
         },
     )
 
@@ -136,6 +143,16 @@ def assign_mentor(request):
             action="Mentor assigned",
             target=f"{staff_member.fullName} -> {mentor.fullName}",
         )
+        Notification.objects.create(
+            recipient=staff_member,
+            message=f"You have been assigned {mentor.fullName} as your supervisor mentor.",
+            link="/epr/employee/",
+        )
+        Notification.objects.create(
+            recipient=mentor,
+            message=f"{staff_member.fullName} has been assigned to your mentorship.",
+            link="/epr/supervisor/",
+        )
 
     messages.success(request, f"{mentor.fullName} was assigned as {staff_member.fullName}'s mentor.")
     return redirect("hr")
@@ -171,9 +188,22 @@ def review_leave(request, leave_id, decision):
             action=f"Leave {leave_request.status.lower()}",
             target=f"{leave_request.employee.fullName}: {leave_request.get_leave_type_display()}",
         )
+        Notification.objects.create(
+            recipient=leave_request.employee,
+            message=f"Your {leave_request.get_leave_type_display()} request was {leave_request.status.lower()}.",
+            link="/epr/employee/",
+        )
 
     messages.success(request, f"Leave request {leave_request.status.lower()}.")
     return redirect("hr")
+
+
+@require_POST
+def mark_notifications_read(request):
+    user_id = request.session.get("user_id")
+    if user_id:
+        Notification.objects.filter(recipient_id=user_id, is_read=False).update(is_read=True)
+    return HttpResponse(status=204)
 
 
 def export_reports(request):

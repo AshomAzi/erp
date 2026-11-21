@@ -5,7 +5,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Staff Portal | CoreERP</title>
+    <title>{% if user_obj.role == 'Intern' %}Intern Portal{% else %}Staff Portal{% endif %} | CoreERP</title>
     <link rel="stylesheet" href="{% static 'css/styles.css' %}" />
     <link rel="stylesheet" href="{% static 'css/employee-dashboard.css' %}" />
 </head>
@@ -42,7 +42,7 @@
                 <button type="button" class="btn btn-outline btn-sm profile-picture-button"
                     data-profile-picture-trigger aria-controls="employeeProfilePicture">Upload profile picture</button>
                 <input type="file" id="employeeProfilePicture" hidden
-                    data-profile-picture-input                     data-profile-picture-key="employee-{{ user_obj.pk|default:'unknown' }}"
+                    data-profile-picture-input data-profile-picture-key="employee-{{ user_obj.pk|default:'unknown' }}"
                     accept="image/jpeg,image/png,image/webp,image/gif" />
                 <p class="profile-picture-feedback" data-profile-picture-feedback role="status"
                     aria-live="polite"></p>
@@ -55,9 +55,27 @@
                 <div class="topbar-left">
                     <button type="button" class="menu-toggle" id="menuToggle" aria-label="Toggle navigation"
                         aria-controls="sidebar" aria-expanded="false">&#9776;</button>
-                    <h1 class="topbar-title">Personal Workspace</h1>
+                    <h1 class="topbar-title">{% if user_obj.role == 'Intern' %}Intern Workspace{% else %}Personal Workspace{% endif %}</h1>
                 </div>
                 <div class="topbar-right">
+                    <div class="notification-dropdown-wrapper" style="position: relative;">
+                        <button type="button" class="btn btn-outline btn-sm" id="notificationToggle" aria-label="Notifications">
+                            Notifications{% if unread_notification_count > 0 %} <span class="badge badge-danger">{{ unread_notification_count }}</span>{% endif %}
+                        </button>
+                        <div class="notification-menu card" id="notificationMenu" style="display: none; position: absolute; right: 0; top: 110%; width: 320px; z-index: 1000; padding: 0.75rem;">
+                            <h4 style="font-size: 0.85rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3rem;">Notifications</h4>
+                            <div style="max-height: 250px; overflow-y: auto;">
+                                {% for notif in notifications %}
+                                <div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border-color); font-size: 0.8rem;">
+                                    <p>{{ notif.message }}</p>
+                                    <span style="color: var(--text-muted); font-size: 0.7rem;">{{ notif.created_at|date:"Y-m-d H:i" }}</span>
+                                </div>
+                                {% empty %}
+                                <p style="font-size: 0.8rem; color: var(--text-muted); text-align: center; padding: 1rem 0;">No notifications.</p>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
                     <span class="live-clock" data-live-clock>--:--:--</span>
                 </div>
             </header>
@@ -295,40 +313,40 @@
                 </form>
             </div>
         </section>
-        </dialog>
+    </dialog>
 
-        <dialog class="modal-backdrop" id="taskDetailsModal" aria-labelledby="taskDetailsTitle">
-            <section class="modal-box">
-                <header class="modal-header">
-                    <h2 id="taskDetailsTitle"></h2>
-                    <button type="button" class="modal-close" data-modal-close aria-label="Close task details">&times;</button>
-                </header>
-                <div class="modal-body">
-                    <dl class="task-detail-list">
-                        <div>
-                            <dt>Assigned By</dt>
-                            <dd id="taskDetailsAssigner"></dd>
-                        </div>
-                        <div>
-                            <dt>Deadline</dt>
-                            <dd id="taskDetailsDeadline"></dd>
-                        </div>
-                        <div>
-                            <dt>Status</dt>
-                            <dd id="taskDetailsStatus"></dd>
-                        </div>
-                    </dl>
-                    <section class="task-description" aria-labelledby="taskDescriptionHeading">
-                        <h3 id="taskDescriptionHeading">Instructions</h3>
-                        <p id="taskDetailsDescription"></p>
-                    </section>
-                    <section class="task-attachment" aria-label="Task PDF attachment">
-                        <p id="taskPdfMessage" role="status">No PDF is attached to this task.</p>
-                        <a id="taskPdfDownload" class="btn btn-outline" hidden>Download PDF</a>
-                    </section>
-                </div>
-            </section>
-        </dialog>
+    <dialog class="modal-backdrop" id="taskDetailsModal" aria-labelledby="taskDetailsTitle">
+        <section class="modal-box">
+            <header class="modal-header">
+                <h2 id="taskDetailsTitle"></h2>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close task details">&times;</button>
+            </header>
+            <div class="modal-body">
+                <dl class="task-detail-list">
+                    <div>
+                        <dt>Assigned By</dt>
+                        <dd id="taskDetailsAssigner"></dd>
+                    </div>
+                    <div>
+                        <dt>Deadline</dt>
+                        <dd id="taskDetailsDeadline"></dd>
+                    </div>
+                    <div>
+                        <dt>Status</dt>
+                        <dd id="taskDetailsStatus"></dd>
+                    </div>
+                </dl>
+                <section class="task-description" aria-labelledby="taskDescriptionHeading">
+                    <h3 id="taskDescriptionHeading">Instructions</h3>
+                    <p id="taskDetailsDescription"></p>
+                </section>
+                <section class="task-attachment" aria-label="Task PDF attachment">
+                    <p id="taskPdfMessage" role="status">No PDF is attached to this task.</p>
+                    <a id="taskPdfDownload" class="btn btn-outline" hidden>Download PDF</a>
+                </section>
+            </div>
+        </section>
+    </dialog>
 
     <dialog class="modal-backdrop" id="requestLeaveModal" aria-labelledby="requestLeaveTitle">
         <section class="modal-box">
@@ -369,6 +387,48 @@
 
     <script src="{% static 'js/common.js' %}"></script>
     <script src="{% static 'js/employee-dashboard.js' %}"></script>
+    <script>
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(";").shift();
+            return "";
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const toggle = document.getElementById("notificationToggle");
+            const menu = document.getElementById("notificationMenu");
+            if (!toggle || !menu) return;
+
+            toggle.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const isOpen = menu.style.display === "block";
+                menu.style.display = isOpen ? "none" : "block";
+
+                if (!isOpen) {
+                    const badge = toggle.querySelector(".badge");
+                    const csrfToken = getCookie("csrftoken") || "{{ csrf_token }}";
+                    if (badge) {
+                        badge.remove();
+                    }
+                    fetch("{% url 'mark_notifications_read' %}", {
+                        method: "POST",
+                        headers: {
+                            "X-CSRFToken": csrfToken,
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin"
+                    }).catch((err) => console.error("Failed to mark notifications read:", err));
+                }
+            });
+
+            document.addEventListener("click", (e) => {
+                if (!menu.contains(e.target) && e.target !== toggle) {
+                    menu.style.display = "none";
+                }
+            });
+        });
+    </script>
 </body>
 
 </html>

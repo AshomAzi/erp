@@ -23,7 +23,8 @@
             </header>
             <nav class="sidebar-navigation" aria-label="Primary navigation">
                 <ul class="sidebar-nav">
-                    <li><button class="nav-link active" data-tab-target="hr-records">Employee &amp; Interns</button></li>
+                    <li><button class="nav-link active" data-tab-target="hr-records">Employee &amp; Interns</button>
+                    </li>
                     <li><button class="nav-link" data-tab-target="hr-attendance">Attendance Logs</button></li>
                     <li><button class="nav-link" data-tab-target="hr-leaves">Leave Requests</button></li>
                     <li><button class="nav-link" data-tab-target="hr-reports">HR Reports</button></li>
@@ -42,11 +43,10 @@
                 </div>
                 <button type="button" class="btn btn-outline btn-sm profile-picture-button"
                     data-profile-picture-trigger aria-controls="hrProfilePicture">Upload profile picture</button>
-                <input type="file" id="hrProfilePicture" hidden
-                    data-profile-picture-input                     data-profile-picture-key="hr-{{ user_obj.pk|default:'unknown' }}"
+                <input type="file" id="hrProfilePicture" hidden data-profile-picture-input
+                    data-profile-picture-key="hr-{{ user_obj.pk|default:'unknown' }}"
                     accept="image/jpeg,image/png,image/webp,image/gif" />
-                <p class="profile-picture-feedback" data-profile-picture-feedback role="status"
-                    aria-live="polite"></p>
+                <p class="profile-picture-feedback" data-profile-picture-feedback role="status" aria-live="polite"></p>
                 <a href="/" class="btn btn-outline btn-sm sidebar-logout">Logout</a>
             </footer>
         </aside>
@@ -59,6 +59,31 @@
                     <h1 class="topbar-title">Human Resources Management</h1>
                 </div>
                 <div class="topbar-right">
+                    <div class="notification-dropdown-wrapper" style="position: relative;">
+                        <button type="button" class="btn btn-outline btn-sm" id="notificationToggle"
+                            aria-label="Notifications">
+                            Notifications{% if unread_notification_count > 0 %} <span class="badge badge-danger">{{ unread_notification_count }}</span>{% endif %}
+                        </button>
+                        <div class="notification-menu card" id="notificationMenu"
+                            style="display: none; position: absolute; right: 0; top: 110%; width: 320px; z-index: 1000; padding: 0.75rem;">
+                            <h4
+                                style="font-size: 0.85rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3rem;">
+                                Notifications</h4>
+                            <div style="max-height: 250px; overflow-y: auto;">
+                                {% for notif in notifications %}
+                                <div
+                                    style="padding: 0.5rem 0; border-bottom: 1px solid var(--border-color); font-size: 0.8rem;">
+                                    <p>{{ notif.message }}</p>
+                                    <span style="color: var(--text-muted); font-size: 0.7rem;">{{ notif.created_at|date:"Y-m-d H:i" }}</span>
+                                </div>
+                                {% empty %}
+                                <p
+                                    style="font-size: 0.8rem; color: var(--text-muted); text-align: center; padding: 1rem 0;">
+                                    No notifications.</p>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
                     <span class="live-clock" data-live-clock>--:--:--</span>
                 </div>
             </header>
@@ -133,8 +158,7 @@
                                         <td>{{ entry.staff.department }}</td>
                                         <td>{{ entry.staff.date_joined|date:"Y-m-d"|default:"Not recorded" }}</td>
                                         <td>
-                                            <button type="button" class="btn btn-outline btn-sm"
-                                                data-staff-profile-open
+                                            <button type="button" class="btn btn-outline btn-sm" data-staff-profile-open
                                                 data-staff-id="{{ entry.staff_id }}"
                                                 data-staff-name="{{ entry.staff.fullName }}"
                                                 data-staff-type="{{ entry.employment_type }}"
@@ -182,7 +206,8 @@
                                         <td>{{ attendance.check_in|date:"h:i A"|default:"--:--" }}</td>
                                         <td>{{ attendance.check_out|date:"h:i A"|default:"--:--" }}</td>
                                         <td>
-                                            <span class="badge {% if attendance.status == 'Late' %}badge-warning{% else %}badge-success{% endif %}">
+                                            <span
+                                                class="badge {% if attendance.status == 'Late' %}badge-warning{% else %}badge-success{% endif %}">
                                                 {% if attendance.status == "Late" %}Late (after {{ late_after_time|time:"g:i A" }}){% else %}Present (on time){% endif %}
                                             </span>
                                         </td>
@@ -223,17 +248,20 @@
                                         <td>{{ leave_request.start_date|date:"M j" }} - {{ leave_request.end_date|date:"M j, Y" }}</td>
                                         <td>{{ leave_request.reason }}</td>
                                         <td>
-                                            <span class="badge {% if leave_request.status == 'Pending' %}badge-warning{% elif leave_request.status == 'Approved' %}badge-success{% else %}badge-danger{% endif %}">
+                                            <span
+                                                class="badge {% if leave_request.status == 'Pending' %}badge-warning{% elif leave_request.status == 'Approved' %}badge-success{% else %}badge-danger{% endif %}">
                                                 {{ leave_request.status }}
                                             </span>
                                         </td>
                                         <td class="table-actions">
                                             {% if leave_request.status == "Pending" %}
-                                            <form method="POST" action="{% url 'review_leave' leave_request.pk 'approve' %}">
+                                            <form method="POST"
+                                                action="{% url 'review_leave' leave_request.pk 'approve' %}">
                                                 {% csrf_token %}
                                                 <button type="submit" class="btn btn-success btn-sm">Approve</button>
                                             </form>
-                                            <form method="POST" action="{% url 'review_leave' leave_request.pk 'reject' %}">
+                                            <form method="POST"
+                                                action="{% url 'review_leave' leave_request.pk 'reject' %}">
                                                 {% csrf_token %}
                                                 <button type="submit" class="btn btn-danger btn-sm">Reject</button>
                                             </form>
@@ -274,7 +302,7 @@
                                     </div>
                                     <div class="form-group">
                                         <label for="reportMonth">Month</label>
-                                        <input type="month" id="reportMonth" name="month" value="{% now "Y-m" %}" />
+                                        <input type="month" id="reportMonth" name="month" value="{% now 'Y-m' %}" />
                                     </div>
                                 </div>
                                 <button type="submit" class="btn btn-primary">Download Report (CSV)</button>
@@ -321,7 +349,7 @@
                 </form>
             </div>
         </section>
-        </dialog>
+    </dialog>
 
     <dialog class="modal-backdrop" id="staffProfileModal" aria-labelledby="staffProfileTitle">
         <section class="modal-box staff-profile-modal-box">
@@ -367,6 +395,48 @@
 
     <script src="{% static 'js/common.js' %}"></script>
     <script src="{% static 'js/hr-dashboard.js' %}"></script>
+    <script>
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(";").shift();
+            return "";
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const toggle = document.getElementById("notificationToggle");
+            const menu = document.getElementById("notificationMenu");
+            if (!toggle || !menu) return;
+
+            toggle.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const isOpen = menu.style.display === "block";
+                menu.style.display = isOpen ? "none" : "block";
+
+                if (!isOpen) {
+                    const badge = toggle.querySelector(".badge");
+                    const csrfToken = getCookie("csrftoken") || "{{ csrf_token }}";
+                    if (badge) {
+                        badge.remove();
+                    }
+                    fetch("{% url 'mark_notifications_read' %}", {
+                        method: "POST",
+                        headers: {
+                            "X-CSRFToken": csrfToken,
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin"
+                    }).catch((err) => console.error("Failed to mark notifications read:", err));
+                }
+            });
+
+            document.addEventListener("click", (e) => {
+                if (!menu.contains(e.target) && e.target !== toggle) {
+                    menu.style.display = "none";
+                }
+            });
+        });
+    </script>
 </body>
 
 </html>

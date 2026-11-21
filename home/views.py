@@ -4,6 +4,8 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth import authenticate, get_user_model
 from admin_dashboard.models import AuditLog
 from signup.models import User
+from django.contrib.auth import logout
+from django.views.decorators.http import require_POST
 
 
 def home(request):
@@ -37,20 +39,27 @@ def home(request):
                         role="Admin",
                         department="IT Support & Service Desk",
                         password=django_user.password,
+                        is_approved=True,
                     )
+                elif not user_obj.is_approved:
+                    user_obj.is_approved = True
+                    user_obj.save(update_fields=["is_approved"])
 
         if user_obj is None:
-            try:
-                user_obj = User.objects.get(email=email)
-            except User.DoesNotExist:
-                user_obj = None
-
+            user_obj = User.objects.filter(email__iexact=email).first()
             if user_obj is None or not check_password(password, user_obj.password):
                 messages.error(
                     request,
                     "Invalid email or password. Don't have an account? Create one.",
                 )
                 return render(request, "login.html")
+
+        if not user_obj.is_approved:
+            messages.warning(
+                request,
+                "Your account is awaiting administrator approval before you can log in.",
+            )
+            return render(request, "login.html")
 
         request.session["user_id"] = user_obj.pk
         request.session["user_fullName"] = user_obj.fullName
@@ -100,3 +109,20 @@ def forgot_password(request):
         return redirect("home")
 
     return render(request, "forgot_password.html")
+
+@require_POST
+def logout_view(request):
+    user_id = request.session.get("user_id")
+    user_obj = User.objects.filter(pk=user_id).first() if user_id else None
+
+    if user_obj is not None:
+        AuditLog.objects.create(
+            actor=user_obj,
+            action="Logged out",
+            target=user_obj.email,
+        )
+
+    logout(request)
+    request.session.flush()
+    messages.info(request, "You have been logged out.")
+    return redirect("/")

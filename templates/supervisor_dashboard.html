@@ -39,13 +39,12 @@
                         <p class="sidebar-meta">{{ user_obj.department|default:"Department" }}</p>
                     </div>
                 </div>
-                <button type="button" class="btn btn-outline btn-sm profile-picture-button"
-                    data-profile-picture-trigger aria-controls="supervisorProfilePicture">Upload profile picture</button>
-                <input type="file" id="supervisorProfilePicture" hidden
-                    data-profile-picture-input                     data-profile-picture-key="supervisor-{{ user_obj.pk|default:'unknown' }}"
+                <button type="button" class="btn btn-outline btn-sm profile-picture-button" data-profile-picture-trigger
+                    aria-controls="supervisorProfilePicture">Upload profile picture</button>
+                <input type="file" id="supervisorProfilePicture" hidden data-profile-picture-input
+                    data-profile-picture-key="supervisor-{{ user_obj.pk|default:'unknown' }}"
                     accept="image/jpeg,image/png,image/webp,image/gif" />
-                <p class="profile-picture-feedback" data-profile-picture-feedback role="status"
-                    aria-live="polite"></p>
+                <p class="profile-picture-feedback" data-profile-picture-feedback role="status" aria-live="polite"></p>
                 <a href="/" class="btn btn-outline btn-sm sidebar-logout">Logout</a>
             </footer>
         </aside>
@@ -58,6 +57,31 @@
                     <h1 class="topbar-title">Team &amp; Task Supervision</h1>
                 </div>
                 <div class="topbar-right">
+                    <div class="notification-dropdown-wrapper" style="position: relative;">
+                        <button type="button" class="btn btn-outline btn-sm" id="notificationToggle"
+                            aria-label="Notifications">
+                            Notifications{% if unread_notification_count > 0 %} <span class="badge badge-danger">{{ unread_notification_count }}</span>{% endif %}
+                        </button>
+                        <div class="notification-menu card" id="notificationMenu"
+                            style="display: none; position: absolute; right: 0; top: 110%; width: 320px; z-index: 1000; padding: 0.75rem;">
+                            <h4
+                                style="font-size: 0.85rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3rem;">
+                                Notifications</h4>
+                            <div style="max-height: 250px; overflow-y: auto;">
+                                {% for notif in notifications %}
+                                <div
+                                    style="padding: 0.5rem 0; border-bottom: 1px solid var(--border-color); font-size: 0.8rem;">
+                                    <p>{{ notif.message }}</p>
+                                    <span style="color: var(--text-muted); font-size: 0.7rem;">{{ notif.created_at|date:"Y-m-d H:i" }}</span>
+                                </div>
+                                {% empty %}
+                                <p
+                                    style="font-size: 0.8rem; color: var(--text-muted); text-align: center; padding: 1rem 0;">
+                                    No notifications.</p>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
                     <span class="live-clock" data-live-clock>--:--:--</span>
                 </div>
             </header>
@@ -110,7 +134,8 @@
                                     <tr>
                                         <td>{{ task.title }}</td>
                                         <td>{{ task.assigned_to.fullName }}</td>
-                                        <td><span class="badge badge-{% if task.priority == 'high' %}danger{% elif task.priority == 'medium' %}warning{% else %}info{% endif %}">{{ task.get_priority_display }}</span></td>
+                                        <td><span
+                                                class="badge badge-{% if task.priority == 'high' %}danger{% elif task.priority == 'medium' %}warning{% else %}info{% endif %}">{{ task.get_priority_display }}</span></td>
                                         <td>{{ task.deadline|date:"Y-m-d" }}</td>
                                         <td><span class="badge badge-info">{{ task.status }}</span></td>
                                     </tr>
@@ -148,16 +173,20 @@
                                         <td>{{ submission.employee.fullName }}</td>
                                         <td>
                                             {{ submission.notes }}
-                                            {% if submission.reference_link %}<br /><a href="{{ submission.reference_link }}" target="_blank" rel="noopener">Open reference</a>{% endif %}
+                                            {% if submission.reference_link %}<br /><a
+                                                href="{{ submission.reference_link }}" target="_blank"
+                                                rel="noopener">Open reference</a>{% endif %}
                                         </td>
                                         <td>{{ submission.submitted_at|date:"Y-m-d H:i" }}</td>
                                         <td class="table-actions">
                                             {% if submission.status == "Submitted" %}
-                                            <form method="POST" action="{% url 'review_submission' submission.pk 'approve' %}">
+                                            <form method="POST"
+                                                action="{% url 'review_submission' submission.pk 'approve' %}">
                                                 {% csrf_token %}
                                                 <button type="submit" class="btn btn-success btn-sm">Approve</button>
                                             </form>
-                                            <form method="POST" action="{% url 'review_submission' submission.pk 'revision' %}">
+                                            <form method="POST"
+                                                action="{% url 'review_submission' submission.pk 'revision' %}">
                                                 {% csrf_token %}
                                                 <button type="submit" class="btn btn-danger btn-sm">Request
                                                     Revision</button>
@@ -168,7 +197,9 @@
                                         </td>
                                     </tr>
                                     {% empty %}
-                                    <tr><td colspan="5">No work submissions have been received.</td></tr>
+                                    <tr>
+                                        <td colspan="5">No work submissions have been received.</td>
+                                    </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
@@ -199,14 +230,18 @@
                                         <td>{{ entry.member.role }}</td>
                                         <td>
                                             {% if entry.attendance and entry.attendance.check_in %}
-                                            <span class="badge {% if entry.attendance.status == 'Late' %}badge-warning{% else %}badge-success{% endif %}">{{ entry.attendance.check_in|date:"h:i A" }}</span>
+                                            <span
+                                                class="badge {% if entry.attendance.status == 'Late' %}badge-warning{% else %}badge-success{% endif %}">{{
+                                                entry.attendance.check_in|date:"h:i A" }}</span>
                                             {% else %}Not checked in{% endif %}
                                         </td>
                                         <td>{{ entry.open_tasks }}</td>
                                         <td>{{ entry.completion_rate }}%</td>
                                     </tr>
                                     {% empty %}
-                                    <tr><td colspan="5">No team members are assigned to you.</td></tr>
+                                    <tr>
+                                        <td colspan="5">No team members are assigned to you.</td>
+                                    </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
@@ -252,7 +287,7 @@
                                 <option value="medium">Medium</option>
                                 <option value="high">High</option>
                             </select>
-                            </div>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="taskDescription">Instructions</label>
@@ -265,6 +300,48 @@
     </dialog>
 
     <script src="{% static 'js/common.js' %}"></script>
+    <script>
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(";").shift();
+            return "";
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const toggle = document.getElementById("notificationToggle");
+            const menu = document.getElementById("notificationMenu");
+            if (!toggle || !menu) return;
+
+            toggle.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const isOpen = menu.style.display === "block";
+                menu.style.display = isOpen ? "none" : "block";
+
+                if (!isOpen) {
+                    const badge = toggle.querySelector(".badge");
+                    const csrfToken = getCookie("csrftoken") || "{{ csrf_token }}";
+                    if (badge) {
+                        badge.remove();
+                    }
+                    fetch("{% url 'mark_notifications_read' %}", {
+                        method: "POST",
+                        headers: {
+                            "X-CSRFToken": csrfToken,
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin"
+                    }).catch((err) => console.error("Failed to mark notifications read:", err));
+                }
+            });
+
+            document.addEventListener("click", (e) => {
+                if (!menu.contains(e.target) && e.target !== toggle) {
+                    menu.style.display = "none";
+                }
+            });
+        });
+    </script>
 </body>
 
 </html>
