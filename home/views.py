@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.hashers import check_password
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from admin_dashboard.models import AuditLog, Notification
 from signup.models import User
@@ -122,31 +122,6 @@ def home(request):
     else:
         return render(request, "login.html")
 
-
-def forgot_password(request):
-    if request.method == "POST":
-        email = request.POST.get("email", "").strip()
-        password = request.POST.get("password", "")
-        password_confirmation = request.POST.get("confirm_password", "")
-
-        if len(password) < 8:
-            messages.error(request, "Password must be at least 8 characters long.")
-            return render(request, "forgot_password.html")
-        if password != password_confirmation:
-            messages.error(request, "Passwords do not match.")
-            return render(request, "forgot_password.html")
-
-        user_obj = User.objects.filter(email__iexact=email).first()
-        if user_obj is None:
-            messages.error(request, "No account uses that email address.")
-            return render(request, "forgot_password.html")
-
-        user_obj.password = make_password(password)
-        user_obj.save(update_fields=["password"])
-        messages.success(request, "Password updated. You can now sign in.")
-        return redirect("home")
-
-    return render(request, "forgot_password.html")
 
 @require_POST
 def logout_view(request):

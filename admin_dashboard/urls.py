@@ -6,6 +6,7 @@ urlpatterns = [
     path("users/create/", views.create_user, name="create_user"),
     path("users/<int:user_id>/approve/", views.approve_user, name="approve_user"),
     path("users/update-role/", views.update_user_role, name="update_user_role"),
+    path("users/reset-password/", views.reset_user_password, name="reset_user_password"),
     path("departments/create/", views.create_department, name="create_department"),
     path("departments/update/", views.update_department, name="update_department"),
     path("settings/", views.save_organization_settings, name="save_organization_settings"),

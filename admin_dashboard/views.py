@@ -1,6 +1,7 @@
 from datetime import datetime
 import logging
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404, redirect, render
@@ -255,6 +256,56 @@ def update_user_role(request):
         )
 
     messages.success(request, f"Updated {target_user.fullName}'s role to {new_role}.")
+    return redirect("admin_dashboard")
+
+
+@require_POST
+def reset_user_password(request):
+    admin_user = _get_admin_user(request)
+    if admin_user is None:
+        return redirect("access_denied")
+
+    try:
+        target_id = int(request.POST.get("user_id", ""))
+    except (TypeError, ValueError):
+        messages.error(request, "Select a valid user.")
+        return redirect("admin_dashboard")
+
+    password = request.POST.get("password", "")
+    if not password.strip():
+        messages.error(request, "Enter a new password.")
+        return redirect("admin_dashboard")
+    if len(password) < 8:
+        messages.error(request, "Password must be at least 8 characters long.")
+        return redirect("admin_dashboard")
+
+    target_user = User.objects.filter(pk=target_id).first()
+    if target_user is None:
+        messages.error(request, "User not found.")
+        return redirect("admin_dashboard")
+
+    with transaction.atomic():
+        target_user.password = make_password(password)
+        target_user.save(update_fields=["password"])
+
+        # Keep the matching Django admin account (if any) in step.
+        django_user = get_user_model().objects.filter(email__iexact=target_user.email).first()
+        if django_user is not None:
+            django_user.set_password(password)
+            django_user.save(update_fields=["password"])
+
+        AuditLog.objects.create(
+            actor=admin_user,
+            action="Password reset",
+            target=f"{target_user.fullName} ({target_user.email})",
+        )
+        Notification.objects.create(
+            recipient=target_user,
+            message="Your password was reset by an administrator.",
+            link="/",
+        )
+
+    messages.success(request, f"Password reset for {target_user.fullName}.")
     return redirect("admin_dashboard")
 
 
