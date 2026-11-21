@@ -234,8 +234,7 @@
                                         <td>
                                             {% if entry.attendance and entry.attendance.check_in %}
                                             <span
-                                                class="badge {% if entry.attendance.status == 'Late' %}badge-warning{% else %}badge-success{% endif %}">{{
-                                                entry.attendance.check_in|date:"h:i A" }}</span>
+                                                class="badge {% if entry.attendance.status == 'Late' %}badge-warning{% else %}badge-success{% endif %}">{{ entry.attendance.check_in|date:"h:i A" }}</span>
                                             {% else %}Not checked in{% endif %}
                                         </td>
                                         <td>{{ entry.open_tasks }}</td>

@@ -218,6 +218,7 @@
                                         <th>Department</th>
                                         <th>Role</th>
                                         <th>Status</th>
+                                        <th>Reset Password</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -234,10 +235,21 @@
                                             <span class="badge badge-warning">Pending</span>
                                             {% endif %}
                                         </td>
+                                        <td>
+                                            <form method="POST" action="{% url 'reset_user_password' %}"
+                                                style="display: flex; gap: 0.5rem; align-items: center;">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="user_id" value="{{ u.pk }}" />
+                                                <input type="password" name="password" required minlength="8"
+                                                    placeholder="New password" autocomplete="new-password"
+                                                    aria-label="New password for {{ u.fullName }}" />
+                                                <button type="submit" class="btn btn-outline btn-sm">Reset</button>
+                                            </form>
+                                        </td>
                                     </tr>
                                     {% empty %}
                                     <tr>
-                                        <td colspan="5">No users found.</td>
+                                        <td colspan="6">No users found.</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -269,7 +281,7 @@
                                         <label for="createDeptHead">Department Head (Optional)</label>
                                         <select id="createDeptHead" name="head_id">
                                             <option value="">No head assigned</option>
-                                            {% for u in users %}
+                                            {% for u in head_candidates %}
                                             <option value="{{ u.pk }}">{{ u.fullName }} ({{ u.role }})</option>
                                             {% endfor %}
                                         </select>
@@ -346,7 +358,7 @@
                                                 {% if dept_has_head %}
                                                 <select name="head_id" aria-label="Department head for {{ row.name }}">
                                                     <option value="">-- Head --</option>
-                                                    {% for u in users %}
+                                                    {% for u in head_candidates %}
                                                     <option value="{{ u.pk }}" {% if row.head_id == u.pk %}selected{% endif %}>
                                                         {{ u.fullName }}
                                                     </option>
@@ -469,9 +481,9 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="newPassword">Temporary Password (Optional)</label>
-                        <input type="password" id="newPassword" name="password"
-                            placeholder="Leave blank to generate automatically" />
+                        <label for="newPassword">Password</label>
+                        <input type="password" id="newPassword" name="password" required minlength="8"
+                            placeholder="At least 8 characters" />
                     </div>
                     <button type="submit" class="btn btn-primary btn-block">Create User</button>
                 </form>

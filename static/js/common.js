@@ -58,21 +58,56 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const tabButtons = document.querySelectorAll("[data-tab-target]");
     const tabSections = document.querySelectorAll(".tab-section");
+    const activeTabStorageKey = `coreerp.activeTab.${window.location.pathname}`;
+
+    function activateTab(targetId) {
+        const targetButton = Array.from(tabButtons).find(
+            (button) => button.getAttribute("data-tab-target") === targetId
+        );
+        const targetSection = Array.from(tabSections).find((section) => section.id === targetId);
+        if (!targetButton || !targetSection) return false;
+
+        tabButtons.forEach((tabButton) => tabButton.classList.remove("active"));
+        targetButton.classList.add("active");
+
+        tabSections.forEach((section) => {
+            section.classList.toggle("active", section.id === targetId);
+        });
+        return true;
+    }
 
     tabButtons.forEach((button) => {
         button.addEventListener("click", () => {
             const targetId = button.getAttribute("data-tab-target");
+            activateTab(targetId);
 
-            tabButtons.forEach((tabButton) => tabButton.classList.remove("active"));
-            button.classList.add("active");
-
-            tabSections.forEach((section) => {
-                section.classList.toggle("active", section.id === targetId);
-            });
+            try {
+                window.sessionStorage.setItem(activeTabStorageKey, targetId);
+            } catch (error) {
+                console.error("Unable to remember the active tab.", error);
+            }
 
             setSidebarOpen(false);
         });
     });
+
+    if (tabButtons.length > 0) {
+        // Re-open the section the user was on before a refresh or form submit.
+        try {
+            const savedTab = window.sessionStorage.getItem(activeTabStorageKey);
+            if (savedTab) activateTab(savedTab);
+        } catch (error) {
+            console.error("Unable to restore the active tab.", error);
+        }
+
+        // Always start at the top of the page (stop the browser restoring the old scroll position).
+        if ("scrollRestoration" in window.history) {
+            window.history.scrollRestoration = "manual";
+        }
+        window.scrollTo(0, 0);
+        window.addEventListener("load", () => window.scrollTo(0, 0));
+        window.addEventListener("pageshow", () => window.scrollTo(0, 0));
+    }
 
     document.querySelectorAll("[data-modal-open]").forEach((trigger) => {
         trigger.addEventListener("click", () => {

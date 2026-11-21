@@ -5,7 +5,6 @@ from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.utils.crypto import get_random_string
 from django.views.decorators.http import require_POST
 
 from employee.models import Attendance, LeaveRequest
@@ -20,6 +19,13 @@ logger = logging.getLogger(__name__)
 _DEPT_HAS_HEAD = any(
     getattr(field, "name", None) == "head" for field in Department._meta.get_fields()
 )
+
+# Only these roles may be assigned as a department head (no Intern / Employee).
+HEAD_ELIGIBLE_ROLES = {"admin", "hr", "supervisor"}
+
+
+def _is_head_eligible(user):
+    return (user.role or "").strip().casefold() in HEAD_ELIGIBLE_ROLES
 
 
 def _get_admin_user(request):
@@ -84,6 +90,7 @@ def admin_dashboard(request):
         {
             "user_obj": user_obj,
             "users": users,
+            "head_candidates": [u for u in users if _is_head_eligible(u)],
             "departments": departments,
             "department_rows": department_rows,
             "dept_has_head": _DEPT_HAS_HEAD,
@@ -115,7 +122,7 @@ def create_user(request):
     email = request.POST.get("email", "").strip().lower()
     department_raw = request.POST.get("department", "").strip()
     role = request.POST.get("role", "Employee").strip()
-    password = request.POST.get("password", "").strip()
+    password = request.POST.get("password", "")
 
     valid_roles = {"Admin", "HR", "Supervisor", "Employee", "Intern"}
     if not full_name or not email or role not in valid_roles:
@@ -129,18 +136,24 @@ def create_user(request):
 
     department = department_obj.name
 
+    if not password.strip():
+        messages.error(request, "A password is required to create a user.")
+        return redirect("admin_dashboard")
+    if len(password) < 8:
+        messages.error(request, "Password must be at least 8 characters long.")
+        return redirect("admin_dashboard")
+
     if User.objects.filter(email__iexact=email).exists():
         messages.error(request, "A user with that email already exists.")
         return redirect("admin_dashboard")
 
-    raw_password = password if password else get_random_string(16)
     with transaction.atomic():
         new_user = User.objects.create(
             fullName=full_name,
             email=email,
             department=department,
             role=role,
-            password=make_password(raw_password),
+            password=make_password(password),
             is_approved=True,
         )
         AuditLog.objects.create(
@@ -258,6 +271,9 @@ def create_department(request):
 
     head_id = (request.POST.get("head_id") or "").strip()
     head_user = User.objects.filter(pk=head_id).first() if (head_id and _DEPT_HAS_HEAD) else None
+    if head_user is not None and not _is_head_eligible(head_user):
+        messages.error(request, "A department head must be an Admin, HR, or Supervisor.")
+        return redirect("admin_dashboard")
 
     try:
         with transaction.atomic():
@@ -312,6 +328,9 @@ def update_department(request):
     head_user = None
     if _DEPT_HAS_HEAD and head_id_raw and not clear_head:
         head_user = User.objects.filter(pk=head_id_raw).first()
+        if head_user is not None and not _is_head_eligible(head_user):
+            messages.error(request, "A department head must be an Admin, HR, or Supervisor.")
+            return redirect("admin_dashboard")
 
     with transaction.atomic():
         dept_obj = None

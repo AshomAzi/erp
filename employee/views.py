@@ -219,6 +219,53 @@ def request_leave(request):
 
 
 @require_POST
+def start_task(request, task_id):
+    employee_user = User.objects.filter(
+        pk=request.session.get("user_id"),
+        role__in=["Employee", "Intern"],
+    ).first()
+    if employee_user is None:
+        return redirect("access_denied")
+
+    assigned_supervisor = employee_user.mentor
+    if assigned_supervisor is None:
+        messages.error(request, "You do not have a supervisor assigned.")
+        return redirect("employee")
+
+    with transaction.atomic():
+        task = Task.objects.select_for_update().filter(
+            pk=task_id,
+            assigned_to=employee_user,
+            assigned_by=assigned_supervisor,
+        ).first()
+        if task is None:
+            messages.error(request, "Choose an assigned task.")
+            return redirect("employee")
+        if TaskSubmission.objects.filter(task=task, employee=employee_user).exists():
+            messages.info(request, "This task has already been submitted.")
+            return redirect("employee")
+        if task.status != "Pending":
+            messages.info(request, f"This task is already {task.status.lower()}.")
+            return redirect("employee")
+
+        task.status = "In Progress"
+        task.save(update_fields=["status"])
+        AuditLog.objects.create(
+            actor=employee_user,
+            action="Task started",
+            target=f"{task.title} by {employee_user.fullName}",
+        )
+        Notification.objects.create(
+            recipient=assigned_supervisor,
+            message=f"{employee_user.fullName} started working on '{task.title}'.",
+            link="/epr/supervisor/",
+        )
+
+    messages.success(request, "Task marked as in progress.")
+    return redirect("employee")
+
+
+@require_POST
 def submit_task(request, task_id):
     employee_user = User.objects.filter(
         pk=request.session.get("user_id"),

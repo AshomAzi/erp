@@ -1,12 +1,43 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password, make_password
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import authenticate, get_user_model, login, logout
 from admin_dashboard.models import AuditLog, Notification
 from signup.models import User
-from django.contrib.auth import logout
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
+
+
+def _login_into_django_admin(request, user_obj, raw_password):
+    """
+    The custom login form uses the signup.User table, but /admin/ only
+    understands Django's own auth user. For custom Admins, make sure a
+    matching Django staff/superuser exists and log them into it so the
+    same browser session can open /admin/ as well.
+    """
+    django_user_model = get_user_model()
+    email = user_obj.email
+
+    django_user = (
+        django_user_model.objects.filter(email__iexact=email).first()
+        or django_user_model.objects.filter(username__iexact=email).first()
+    )
+    if django_user is None:
+        django_user = django_user_model(username=email, email=email)
+
+    django_user.first_name = (user_obj.fullName or "")[:150]
+    django_user.is_active = True
+    django_user.is_staff = True
+    django_user.is_superuser = True
+    if not django_user.has_usable_password() or not django_user.check_password(raw_password):
+        django_user.set_password(raw_password)
+    django_user.save()
+
+    login(
+        request,
+        django_user,
+        backend="django.contrib.auth.backends.ModelBackend",
+    )
 
 
 def home(request):
@@ -61,6 +92,12 @@ def home(request):
                 "Your account is awaiting administrator approval before you can log in.",
             )
             return render(request, "login.html")
+
+        # Log custom Admins into Django's auth too, so /admin/ works.
+        # Must run BEFORE the custom session keys below, because login()
+        # can cycle/flush the session.
+        if user_obj.role.strip().casefold() == "admin":
+            _login_into_django_admin(request, user_obj, password)
 
         request.session["user_id"] = user_obj.pk
         request.session["user_fullName"] = user_obj.fullName
