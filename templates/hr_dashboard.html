@@ -47,7 +47,10 @@
                     data-profile-picture-key="hr-{{ user_obj.pk|default:'unknown' }}"
                     accept="image/jpeg,image/png,image/webp,image/gif" />
                 <p class="profile-picture-feedback" data-profile-picture-feedback role="status" aria-live="polite"></p>
-                <a href="/" class="btn btn-outline btn-sm sidebar-logout">Logout</a>
+                <form method="POST" action="{% url 'logout' %}" class="logout-form">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline btn-sm sidebar-logout">Logout</button>
+                </form>
             </footer>
         </aside>
 
@@ -438,5 +441,3 @@
         });
     </script>
 </body>
-
-</html>

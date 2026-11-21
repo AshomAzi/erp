@@ -1,14 +1,12 @@
 from dataclasses import dataclass
 from datetime import date
 import csv
-
 from django.contrib import messages
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-
 from admin_dashboard.models import AuditLog, Notification, OrganizationSettings
 from employee.attendance_policy import attendance_deadlines
 from employee.models import Attendance, LeaveRequest
@@ -196,14 +194,6 @@ def review_leave(request, leave_id, decision):
 
     messages.success(request, f"Leave request {leave_request.status.lower()}.")
     return redirect("hr")
-
-
-@require_POST
-def mark_notifications_read(request):
-    user_id = request.session.get("user_id")
-    if user_id:
-        Notification.objects.filter(recipient_id=user_id, is_read=False).update(is_read=True)
-    return HttpResponse(status=204)
 
 
 def export_reports(request):

@@ -46,7 +46,10 @@
                     accept="image/jpeg,image/png,image/webp,image/gif" />
                 <p class="profile-picture-feedback" data-profile-picture-feedback role="status"
                     aria-live="polite"></p>
-                <a href="/" class="btn btn-outline btn-sm sidebar-logout">Logout</a>
+                <form method="POST" action="{% url 'logout' %}" class="logout-form">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline btn-sm sidebar-logout">Logout</button>
+                </form>
             </footer>
         </aside>
 
@@ -83,7 +86,7 @@
             <main class="content-container">
                 {% if messages %}
                 {% for message in messages %}
-                <p class="alert-banner {% if message.tags == 'success' %}alert-success{% else %}alert-danger{% endif %} show"
+                <p class="alert-banner {% if 'success' in message.tags %}alert-success{% elif 'warning' in message.tags %}alert-warning{% elif 'info' in message.tags %}alert-info{% else %}alert-danger{% endif %} show"
                     role="status">{{ message }}</p>
                 {% endfor %}
                 {% endif %}
@@ -216,23 +219,33 @@
                                         <td>{{ task.title }}</td>
                                         <td>{{ task.assigned_by.fullName|default:"Supervisor" }}</td>
                                         <td>{{ task.deadline|date:"Y-m-d" }}</td>
-                                        <td><span class="badge badge-info">{{ task.status }}</span></td>
+                                        <td>
+                                            <span class="badge {% if task.status == 'In Progress' %}badge-warning{% elif task.status == 'Approved' %}badge-success{% else %}badge-info{% endif %}">
+                                                {{ task.status }}
+                                            </span>
+                                        </td>
                                         <td>
                                             <button type="button" class="btn btn-outline btn-sm"
                                                 data-task-details-open aria-haspopup="dialog"
                                                 aria-controls="taskDetailsModal">View Details</button>
                                             {% if not submission %}
-                                            <button class="btn btn-primary btn-sm"
-                                                data-submit-task-trigger
-                                                data-task-id="{{ task.pk }}"
-                                                data-modal-open="submitWorkModal">Submit Work</button>
+                                                {% if task.status != "In Progress" and task.status != "Approved" %}
+                                                <form method="POST" action="{% url 'start_task' task.pk %}" style="display: inline;">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-outline btn-sm">Start Task</button>
+                                                </form>
+                                                {% endif %}
+                                                <button class="btn btn-primary btn-sm"
+                                                    data-submit-task-trigger
+                                                    data-task-id="{{ task.pk }}"
+                                                    data-modal-open="submitWorkModal">Submit Work</button>
                                             {% elif submission.status == "RevisionRequested" %}
-                                            <button class="btn btn-primary btn-sm"
-                                                data-submit-task-trigger
-                                                data-task-id="{{ task.pk }}"
-                                                data-modal-open="submitWorkModal">Edit &amp; Resubmit</button>
+                                                <button class="btn btn-primary btn-sm"
+                                                    data-submit-task-trigger
+                                                    data-task-id="{{ task.pk }}"
+                                                    data-modal-open="submitWorkModal">Edit &amp; Resubmit</button>
                                             {% else %}
-                                            <span class="badge badge-info">{{ submission.get_status_display }}</span>
+                                                <span class="badge badge-info">{{ submission.get_status_display }}</span>
                                             {% endif %}
                                         </td>
                                     </tr>

@@ -1,9 +1,9 @@
 from datetime import datetime
-
+import logging
 from django.contrib import messages
 from django.contrib.auth.hashers import make_password
-from django.db import transaction
-from django.shortcuts import redirect, render
+from django.db import IntegrityError, transaction
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from django.views.decorators.http import require_POST
@@ -12,7 +12,14 @@ from employee.models import Attendance, LeaveRequest
 from signup.models import User
 from supervisor.models import Task
 
-from .models import AuditLog, Notification, OrganizationSettings
+from .models import AuditLog, Department, Notification, OrganizationSettings
+
+
+logger = logging.getLogger(__name__)
+
+_DEPT_HAS_HEAD = any(
+    getattr(field, "name", None) == "head" for field in Department._meta.get_fields()
+)
 
 
 def _get_admin_user(request):
@@ -36,7 +43,32 @@ def admin_dashboard(request):
     if user_obj is None:
         return redirect("access_denied")
 
-    users = User.objects.all().order_by("fullName")
+    users = list(User.objects.all().order_by("fullName"))
+    if _DEPT_HAS_HEAD:
+        departments = list(Department.objects.select_related("head").order_by("name"))
+    else:
+        departments = list(Department.objects.order_by("name"))
+
+    dept_counts = {}
+    for u in users:
+        key = (u.department or "").strip().casefold()
+        if key:
+            dept_counts[key] = dept_counts.get(key, 0) + 1
+
+    department_rows = []
+    for dept in departments:
+        head_obj = getattr(dept, "head", None) if _DEPT_HAS_HEAD else None
+        department_rows.append(
+            {
+                "id": dept.pk,
+                "name": dept.name,
+                "head": head_obj,
+                "head_id": head_obj.pk if head_obj else "",
+                "head_name": head_obj.fullName if head_obj else "Not assigned",
+                "member_count": dept_counts.get(dept.name.strip().casefold(), 0),
+            }
+        )
+
     audit_logs = AuditLog.objects.select_related("actor").order_by("-occurred_at")[:30]
     organization_settings, _ = OrganizationSettings.objects.get_or_create(pk=1)
 
@@ -52,13 +84,16 @@ def admin_dashboard(request):
         {
             "user_obj": user_obj,
             "users": users,
-            "total_users": users.count(),
-            "admin_count": users.filter(role__iexact="Admin").count(),
-            "hr_count": users.filter(role__iexact="HR").count(),
-            "supervisor_count": users.filter(role__iexact="Supervisor").count(),
-            "employee_count": users.filter(role__iexact="Employee").count(),
-            "intern_count": users.filter(role__iexact="Intern").count(),
-            "pending_approvals_count": users.filter(is_approved=False).count(),
+            "departments": departments,
+            "department_rows": department_rows,
+            "dept_has_head": _DEPT_HAS_HEAD,
+            "total_users": len(users),
+            "admin_count": sum(1 for u in users if (u.role or "").strip().casefold() == "admin"),
+            "hr_count": sum(1 for u in users if (u.role or "").strip().casefold() == "hr"),
+            "supervisor_count": sum(1 for u in users if (u.role or "").strip().casefold() == "supervisor"),
+            "employee_count": sum(1 for u in users if (u.role or "").strip().casefold() == "employee"),
+            "intern_count": sum(1 for u in users if (u.role or "").strip().casefold() == "intern"),
+            "pending_approvals_count": sum(1 for u in users if not u.is_approved),
             "active_tasks": Task.objects.exclude(status="Approved").count(),
             "pending_leaves": LeaveRequest.objects.filter(status="Pending").count(),
             "present_today": Attendance.objects.filter(date=today, check_in__isnull=False).count(),
@@ -78,7 +113,7 @@ def create_user(request):
 
     full_name = request.POST.get("full_name", "").strip()
     email = request.POST.get("email", "").strip().lower()
-    department = request.POST.get("department", "").strip()
+    department_raw = request.POST.get("department", "").strip()
     role = request.POST.get("role", "Employee").strip()
     password = request.POST.get("password", "").strip()
 
@@ -86,6 +121,13 @@ def create_user(request):
     if not full_name or not email or role not in valid_roles:
         messages.error(request, "Provide a valid full name, email, and role.")
         return redirect("admin_dashboard")
+
+    department_obj = Department.objects.filter(name__iexact=department_raw).first()
+    if not department_raw or department_obj is None:
+        messages.error(request, "Choose a valid department.")
+        return redirect("admin_dashboard")
+
+    department = department_obj.name
 
     if User.objects.filter(email__iexact=email).exists():
         messages.error(request, "A user with that email already exists.")
@@ -96,7 +138,7 @@ def create_user(request):
         new_user = User.objects.create(
             fullName=full_name,
             email=email,
-            department=department or "General",
+            department=department,
             role=role,
             password=make_password(raw_password),
             is_approved=True,
@@ -173,8 +215,8 @@ def update_user_role(request):
         messages.error(request, "User not found.")
         return redirect("admin_dashboard")
 
-    if target_user.pk == admin_user.pk and new_role != "Admin":
-        messages.error(request, "You cannot remove your own Admin privileges.")
+    if (target_user.role or "").strip().casefold() == "admin":
+        messages.error(request, "Admin roles cannot be modified.")
         return redirect("admin_dashboard")
 
     if target_user.role == new_role:
@@ -209,18 +251,43 @@ def create_department(request):
     if admin_user is None:
         return redirect("access_denied")
 
-    dept_name = request.POST.get("department_name", "").strip() or request.POST.get("name", "").strip()
+    dept_name = (request.POST.get("department_name") or request.POST.get("name") or "").strip()
     if not dept_name:
         messages.error(request, "Enter a department name.")
         return redirect("admin_dashboard")
 
-    AuditLog.objects.create(
-        actor=admin_user,
-        action="Department created",
-        target=dept_name,
-    )
-    _notify_admins(f"Department '{dept_name}' was created by {admin_user.fullName}.")
-    messages.success(request, f"Department '{dept_name}' recorded.")
+    head_id = (request.POST.get("head_id") or "").strip()
+    head_user = User.objects.filter(pk=head_id).first() if (head_id and _DEPT_HAS_HEAD) else None
+
+    try:
+        with transaction.atomic():
+            existing = Department.objects.filter(name__iexact=dept_name).first()
+            if existing is None:
+                create_kwargs = {"name": dept_name}
+                if _DEPT_HAS_HEAD:
+                    create_kwargs["head"] = head_user
+                dept = Department.objects.create(**create_kwargs)
+            else:
+                dept = existing
+                if _DEPT_HAS_HEAD and head_id and getattr(dept, "head_id", None) != (head_user.pk if head_user else None):
+                    dept.head = head_user
+                    dept.save(update_fields=["head"])
+
+            target_desc = dept.name
+            if _DEPT_HAS_HEAD and head_user:
+                target_desc = f"{dept.name} (Head: {head_user.fullName})"
+
+            AuditLog.objects.create(
+                actor=admin_user,
+                action="Department created",
+                target=target_desc,
+            )
+            _notify_admins(f"Department '{dept.name}' was created by {admin_user.fullName}.")
+    except IntegrityError:
+        messages.error(request, f"A department named '{dept_name}' already exists.")
+        return redirect("admin_dashboard")
+
+    messages.success(request, f"Department '{dept.name}' saved.")
     return redirect("admin_dashboard")
 
 
@@ -230,23 +297,114 @@ def update_department(request):
     if admin_user is None:
         return redirect("access_denied")
 
-    old_name = request.POST.get("old_department", "").strip()
-    new_name = request.POST.get("department_name", "").strip() or request.POST.get("name", "").strip()
-    if not new_name:
-        messages.error(request, "Enter a valid department name.")
-        return redirect("admin_dashboard")
+    dept_id = (request.POST.get("department_id") or "").strip()
+    old_name = (request.POST.get("old_department") or "").strip()
+    new_name = (
+        request.POST.get("department_name")
+        or request.POST.get("name")
+        or request.POST.get("department")
+        or ""
+    ).strip()
+    head_id_raw = request.POST.get("head_id")
+    clear_head = request.POST.get("clear_head") == "1"
+    user_id_raw = (request.POST.get("user_id") or "").strip()
+
+    head_user = None
+    if _DEPT_HAS_HEAD and head_id_raw and not clear_head:
+        head_user = User.objects.filter(pk=head_id_raw).first()
 
     with transaction.atomic():
-        if old_name and old_name != new_name:
-            User.objects.filter(department__iexact=old_name).update(department=new_name)
-        AuditLog.objects.create(
-            actor=admin_user,
-            action="Department updated",
-            target=f"{old_name or 'Department'} -> {new_name}",
-        )
-        _notify_admins(f"Department updated to '{new_name}' by {admin_user.fullName}.")
+        dept_obj = None
+        if dept_id:
+            dept_obj = get_object_or_404(Department, pk=dept_id)
+        elif old_name:
+            dept_obj = Department.objects.filter(name__iexact=old_name).first()
+        elif new_name and not user_id_raw:
+            dept_obj = Department.objects.filter(name__iexact=new_name).first()
 
-    messages.success(request, f"Department updated to '{new_name}'.")
+        resolved_dept_name = new_name or (dept_obj.name if dept_obj else "")
+
+        if dept_obj is not None:
+            previous_name = dept_obj.name
+            if resolved_dept_name:
+                conflict = (
+                    Department.objects.filter(name__iexact=resolved_dept_name)
+                    .exclude(pk=dept_obj.pk)
+                    .first()
+                )
+                if conflict:
+                    messages.error(request, f"A department named '{resolved_dept_name}' already exists.")
+                    return redirect("admin_dashboard")
+                dept_obj.name = resolved_dept_name
+
+            update_fields = ["name"]
+            if _DEPT_HAS_HEAD and (clear_head or head_id_raw is not None):
+                dept_obj.head = None if clear_head else head_user
+                update_fields.append("head")
+
+            dept_obj.save(update_fields=update_fields)
+
+            if previous_name != dept_obj.name:
+                User.objects.filter(department__iexact=previous_name).update(department=dept_obj.name)
+
+            resolved_dept_name = dept_obj.name
+            AuditLog.objects.create(
+                actor=admin_user,
+                action="Department updated",
+                target=f"{previous_name} -> {dept_obj.name}",
+            )
+            _notify_admins(f"Department updated to '{dept_obj.name}' by {admin_user.fullName}.")
+        elif resolved_dept_name and not user_id_raw:
+            create_kwargs = {"name": resolved_dept_name}
+            if _DEPT_HAS_HEAD:
+                create_kwargs["head"] = head_user
+            dept_obj, _ = Department.objects.get_or_create(
+                name__iexact=resolved_dept_name,
+                defaults=create_kwargs,
+            )
+            resolved_dept_name = dept_obj.name
+            AuditLog.objects.create(
+                actor=admin_user,
+                action="Department updated",
+                target=f"{old_name or 'Department'} -> {resolved_dept_name}",
+            )
+            _notify_admins(f"Department updated to '{resolved_dept_name}' by {admin_user.fullName}.")
+
+        if user_id_raw:
+            target_user = User.objects.filter(pk=user_id_raw).first()
+            if target_user is None:
+                messages.error(request, "Selected user was not found.")
+                return redirect("admin_dashboard")
+            if not resolved_dept_name:
+                messages.error(request, "Choose a department for the selected user.")
+                return redirect("admin_dashboard")
+
+            matched_dept = Department.objects.filter(name__iexact=resolved_dept_name).first()
+            final_dept_name = matched_dept.name if matched_dept else resolved_dept_name
+            target_user.department = final_dept_name
+            target_user.save(update_fields=["department"])
+
+            AuditLog.objects.create(
+                actor=admin_user,
+                action="User department assigned",
+                target=f"{target_user.fullName} -> {final_dept_name}",
+            )
+            Notification.objects.create(
+                recipient=target_user,
+                message=f"Your department has been updated to {final_dept_name} by {admin_user.fullName}.",
+                link="/",
+            )
+            _notify_admins(
+                f"Assigned {target_user.fullName} to department '{final_dept_name}' by {admin_user.fullName}."
+            )
+            messages.success(request, f"Assigned {target_user.fullName} to {final_dept_name}.")
+            return redirect("admin_dashboard")
+
+        if not resolved_dept_name:
+            messages.error(request, "Enter a valid department name.")
+            return redirect("admin_dashboard")
+
+    messages.success(request, f"Department '{resolved_dept_name}' updated.")
     return redirect("admin_dashboard")
 
 
@@ -274,6 +432,7 @@ def save_organization_settings(request):
         settings_obj, _ = OrganizationSettings.objects.get_or_create(pk=1)
         settings_obj.check_in_time = check_in_time
         settings_obj.check_out_time = check_out_time
+        settings_obj.updated_by = admin_user
         settings_obj.save()
 
         AuditLog.objects.create(

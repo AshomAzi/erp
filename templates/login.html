@@ -34,7 +34,8 @@
 
             {% if messages %}
             {% for message in messages %}
-            <p class="alert-banner alert-danger show" role="alert">{{ message }}</p>
+            <p class="alert-banner {% if 'success' in message.tags %}alert-success{% elif 'warning' in message.tags %}alert-warning{% elif 'info' in message.tags %}alert-info{% else %}alert-danger{% endif %} show"
+                role="alert">{{ message }}</p>
             {% endfor %}
             {% endif %}
 
@@ -63,7 +64,7 @@
             </form>
 
             <p class="auth-footer">
-                Need an account?<a href="/signup/" class="auth-link">Create account</a>
+                Need an account? <a href="/signup/" class="auth-link">Create account</a>
             </p>
         </section>
     </main>

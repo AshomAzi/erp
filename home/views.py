@@ -2,10 +2,11 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth import authenticate, get_user_model
-from admin_dashboard.models import AuditLog
+from admin_dashboard.models import AuditLog, Notification
 from signup.models import User
 from django.contrib.auth import logout
 from django.views.decorators.http import require_POST
+from django.http import JsonResponse
 
 
 def home(request):
@@ -126,3 +127,28 @@ def logout_view(request):
     request.session.flush()
     messages.info(request, "You have been logged out.")
     return redirect("/")
+
+
+@require_POST
+def mark_notifications_read(request):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse({"error": "Authentication required."}, status=403)
+        return redirect("access_denied")
+
+    user_obj = User.objects.filter(pk=user_id).first()
+    if user_obj is None:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse({"error": "User not found."}, status=403)
+        return redirect("access_denied")
+
+    Notification.objects.filter(recipient=user_obj, is_read=False).update(is_read=True)
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse({"status": "ok"})
+
+    referer = request.META.get("HTTP_REFERER")
+    if referer:
+        return redirect(referer)
+    return redirect("home")
